@@ -91,28 +91,50 @@ class MeFair2Client(Client):
         for epoch in range(self.num_epoch):
             last_train_loss = train_loss
             train_loss = train_netloss = train_acc = train_total = 0.0
-            for x, y in self.train_dataloader:
-                if self.gpu:
-                    x, y = x.cuda(), y.cuda()
-                self.optimizer.zero_grad()
-                pred = self.model(x)
-                if torch.isnan(pred.max()):
-                    from IPython import embed
-                    embed()
-                loss = self.criterion(pred, y)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 60)
-                self.optimizer.step(self.local_model, loss.item())
-                self.person_model_params = self.get_flat_model_params()
-                regularizer = 0.5 * self.lamda * ((self.person_model_params - self.local_model).norm())**2
+
+            x, y = self.get_next_train_batch()
+            if self.gpu:
+                x, y = x.cuda(), y.cuda()
+            self.optimizer.zero_grad()
+            pred = self.model(x)
+            if torch.isnan(pred.max()):
+                from IPython import embed
+                embed()
+            loss = self.criterion(pred, y)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 60)
+            self.optimizer.step(self.local_model, loss.item())
+            self.person_model_params = self.get_flat_model_params()
+            regularizer = 0.5 * self.lamda * ((self.person_model_params - self.local_model).norm())**2
+
+            _, predicted = torch.max(pred, 1)
+            train_acc = predicted.eq(y).sum().item()
+            train_total = y.size(0)
+            train_netloss = loss.item() * y.size(0)
+            train_loss = ((1.0 / (self.q + 1)) * (loss.item())**(self.q + 1) + regularizer.item()) * y.size(0)
+
+            # for x, y in self.train_dataloader:
+            #     if self.gpu:
+            #         x, y = x.cuda(), y.cuda()
+            #     self.optimizer.zero_grad()
+            #     pred = self.model(x)
+            #     if torch.isnan(pred.max()):
+            #         from IPython import embed
+            #         embed()
+            #     loss = self.criterion(pred, y)
+            #     loss.backward()
+            #     torch.nn.utils.clip_grad_norm_(self.model.parameters(), 60)
+            #     self.optimizer.step(self.local_model, loss.item())
+            #     self.person_model_params = self.get_flat_model_params()
+            #     regularizer = 0.5 * self.lamda * ((self.person_model_params - self.local_model).norm())**2
                 
-                _, predicted = torch.max(pred, 1)
-                correct = predicted.eq(y).sum().item()
-                target_size = y.size(0)
-                train_netloss += loss.item() * y.size(0)
-                train_loss += ((1.0 / (self.q + 1)) * (loss.item())**(self.q + 1) + regularizer.item()) * y.size(0)
-                train_acc += correct
-                train_total += target_size
+            #     _, predicted = torch.max(pred, 1)
+            #     correct = predicted.eq(y).sum().item()
+            #     target_size = y.size(0)
+            #     train_netloss += loss.item() * y.size(0)
+            #     train_loss += ((1.0 / (self.q + 1)) * (loss.item())**(self.q + 1) + regularizer.item()) * y.size(0)
+            #     train_acc += correct
+            #     train_total += target_size
 
             if train_loss - last_train_loss < 1e-20 and epoch > 1:
                 break

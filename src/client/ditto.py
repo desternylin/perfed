@@ -14,7 +14,8 @@ class DittoClient(Client):
         self.wd = options['wd']
         self.move_model_to_gpu(self.model, options)
         local_model_dim = sum(p.numel() for p in self.model.parameters())
-        self.local_model = torch.zeros(local_model_dim)
+        # self.local_model = torch.zeros(local_model_dim)
+        self.local_model = self.get_flat_model_params()
         self.global_model = choose_model(options)
         set_flat_params_to(self.global_model, self.local_model)
         self.global_optimizer = grad_desc(self.global_model.parameters(), lr = options['local_lr'], weight_decay = options['wd'])
@@ -95,28 +96,50 @@ class DittoClient(Client):
         for epoch in range(self.num_epoch):
             last_train_loss = train_loss
             train_loss = train_netloss = train_acc = train_total = 0.0
-            for x, y in self.train_dataloader:
-                if self.gpu:
-                    x, y = x.cuda(), y.cuda()
-                self.optimizer.zero_grad()
-                pred = self.model(x)
-                if torch.isnan(pred.max()):
-                    from IPython import embed
-                    embed()
-                loss = self.criterion(pred, y)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 60)
-                self.optimizer.step(self.local_model)
-                self.person_model_params = self.get_flat_model_params()
-                regularizer = 0.5 * self.lamda * ((self.person_model_params - self.local_model).norm())**2
+
+            x, y = self.get_next_train_batch()
+            if self.gpu:
+                x, y = x.cuda(), y.cuda()
+            self.optimizer.zero_grad()
+            pred = self.model(x)
+            if torch.isnan(pred.max()):
+                from IPython import embed
+                embed()
+            loss = self.criterion(pred, y)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 60)
+            self.optimizer.step(self.local_model)
+            self.person_model_params = self.get_flat_model_params()
+            regularizer = 0.5 * self.lamda * ((self.person_model_params - self.local_model).norm())**2
+
+            _, predicted = torch.max(pred, 1)
+            train_acc = predicted.eq(y).sum().item()
+            train_total = y.size(0)
+            train_netloss = loss.item() * y.size(0)
+            train_loss = (loss.item() + regularizer.item()) * y.size(0)
+
+            # for x, y in self.train_dataloader:
+            #     if self.gpu:
+            #         x, y = x.cuda(), y.cuda()
+            #     self.optimizer.zero_grad()
+            #     pred = self.model(x)
+            #     if torch.isnan(pred.max()):
+            #         from IPython import embed
+            #         embed()
+            #     loss = self.criterion(pred, y)
+            #     loss.backward()
+            #     torch.nn.utils.clip_grad_norm_(self.model.parameters(), 60)
+            #     self.optimizer.step(self.local_model)
+            #     self.person_model_params = self.get_flat_model_params()
+            #     regularizer = 0.5 * self.lamda * ((self.person_model_params - self.local_model).norm())**2
                 
-                _, predicted = torch.max(pred, 1)
-                correct = predicted.eq(y).sum().item()
-                target_size = y.size(0)
-                train_netloss += loss.item() * y.size(0)
-                train_loss += (loss.item() + regularizer.item()) * y.size(0)
-                train_acc += correct
-                train_total += target_size
+            #     _, predicted = torch.max(pred, 1)
+            #     correct = predicted.eq(y).sum().item()
+            #     target_size = y.size(0)
+            #     train_netloss += loss.item() * y.size(0)
+            #     train_loss += (loss.item() + regularizer.item()) * y.size(0)
+            #     train_acc += correct
+            #     train_total += target_size
 
             if train_loss - last_train_loss < 1e-20 and epoch > 1:
                 break
@@ -135,25 +158,44 @@ class DittoClient(Client):
         train_loss = train_acc = train_total = 0.0
         for local_round in range(self.num_local_round):
             train_loss = train_acc = train_total = 0.0
-            for x, y in self.train_dataloader:
-                if self.gpu:
-                    x, y = x.cuda(), y.cuda()
-                self.global_optimizer.zero_grad()
-                pred = self.global_model(x)
-                if torch.isnan(pred.max()):
-                    from IPython import embed
-                    embed()
-                loss = self.criterion(pred, y)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.global_model.parameters(), 60)
-                self.global_optimizer.step()
+
+            x, y = self.get_next_train_batch()
+            if self.gpu:
+                x, y = x.cuda(), y.cuda()
+            self.global_optimizer.zero_grad()
+            pred = self.global_model(x)
+            if torch.isnan(pred.max()):
+                from IPython import embed
+                embed()
+            loss = self.criterion(pred, y)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.global_model.parameters(), 60)
+            self.optimizer.step()
+
+            _, predicted = torch.max(pred, 1)
+            train_acc = predicted.eq(y).sum().item()
+            train_total = y.size(0)
+            train_loss = loss.item() * y.size(0)
+
+            # for x, y in self.train_dataloader:
+            #     if self.gpu:
+            #         x, y = x.cuda(), y.cuda()
+            #     self.global_optimizer.zero_grad()
+            #     pred = self.global_model(x)
+            #     if torch.isnan(pred.max()):
+            #         from IPython import embed
+            #         embed()
+            #     loss = self.criterion(pred, y)
+            #     loss.backward()
+            #     torch.nn.utils.clip_grad_norm_(self.global_model.parameters(), 60)
+            #     self.global_optimizer.step()
              
-                _, predicted = torch.max(pred, 1)
-                correct = predicted.eq(y).sum().item()
-                target_size = y.size(0)
-                train_loss += loss.item() * y.size(0)
-                train_acc += correct
-                train_total += target_size
+            #     _, predicted = torch.max(pred, 1)
+            #     correct = predicted.eq(y).sum().item()
+            #     target_size = y.size(0)
+            #     train_loss += loss.item() * y.size(0)
+            #     train_acc += correct
+            #     train_total += target_size
 
         # param_dict = {'norm': torch.norm(self.person_model_params).item(), 
         #     'max': self.person_model_params.max().item(),

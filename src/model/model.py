@@ -264,6 +264,10 @@ def choose_model(options):
         return TwoHiddenLayerFc(options['input_shape'], options['num_class'])
     elif model_name == '1nn':
         return OneHiddenLayerFc(options['input_shape'], options['num_class'])
+    elif model_name == 'cifar':
+        return CifarNet()
+    elif model_name == 'vgg':
+        return VGG16(options['input_shape'], options['num_class'])
     else:
         raise ValueError("Not support model: {}!".format(model_name))
 

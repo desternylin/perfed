@@ -26,11 +26,15 @@ class Server(object):
         self.name = '_'.join([name, f'wn{self.clients_per_round}', f'tn{len(self.clients)}'])
         self.metrics = Metrics(self.clients, options, self.name)
         self.print_result = not options['noprint']
-        self.latest_model = torch.zeros(options['local_model_dim'])
+        self.local_model_dim = options['local_model_dim']
+        # self.latest_model = torch.ones(self.local_model_dim) * 0.001
         self.aggr = options['aggr']
+        self.algo = options['algo']
 
     def setup_clients(self, dataset, options):
         users, train_data, test_data = dataset
+
+        print('Number of users = {}'.format(len(users)))
 
         # Load selected client
         client_path = 'src.client.%s' % options['algo']
@@ -48,9 +52,21 @@ class Server(object):
             all_clients.append(c)
         
         return all_clients
+    
+    def select_clients(self, seed = 1):
+        """Selects num_clients clients from possible clients"""
+        num_clients = min(self.clients_per_round, len(self.clients))
+        np.random.seed(seed)
+        return np.random.choice(self.clients, num_clients, replace = False).tolist()
 
     def train(self):
         print('>>> Select {} clients for aggregation per round \n'.format(self.clients_per_round))
+        tmp_latest_model = self.clients[0].get_flat_model_params().detach()
+        if len(tmp_latest_model) == self.local_model_dim:
+            self.latest_model = tmp_latest_model
+            # self.latest_model = torch.zeros(self.local_model_dim, requires_grad = True)
+        else:
+            self.latest_model = torch.zeros(self.local_model_dim)
 
         for round_i in range(self.num_round):
             print('>>> Round {}, latest model.norm = {}'.format(round_i, self.latest_model.norm()))
@@ -59,37 +75,81 @@ class Server(object):
             self.test_latest_model_on_train_data(round_i)
             self.test_latest_model_on_eval_data(round_i)
 
-            # Do local update for all clients
-            solns = [] # Buffer for receiving client solutions
-            stats = [] # Buffer for receiving client statistics
-            for c in self.clients:
-                # Communicate the latest global model
-                c.set_local_model_params(self.latest_model)
+            partial_commu_alg = ['fedavg', 'perfedavg']
+            if self.algo not in partial_commu_alg:
+                # Do local update for all clients
+                solns = [] # Buffer for receiving client solutions
+                stats = [] # Buffer for receiving client statistics
+                for c in self.clients:
+                    # Communicate the latest global model
+                    c.set_local_model_params(self.latest_model)
 
-                # Solve local and personal minimization
-                soln, stat = c.local_train()
+                    # Solve local and personal minimization
+                    soln, stat = c.local_train()
 
-                # Decay the learning rate for both local optimization problem
-                c.inverse_prop_decay_learning_rate(round_i)
+                    # Decay the learning rate for both local optimization problem
+                    # c.inverse_prop_decay_learning_rate(round_i)
 
-                if self.print_result:
-                    print('Round: {: >2d} | CID:{: >3d} |'
-                    'personalized model param: norm {: >.4f} ({:>4f}->{:>4f})| '
-                    'loss {:>.4f} | Acc {:>5.2f}% | Time: {:>.2f}s'.format(
-                        round_i, c.cid, 
-                        stat['norm'], stat['min'], stat['max'],
-                        stat['loss'], stat['acc'] * 100, stat['time']
-                    ))
+                    if self.print_result:
+                        print('Round: {: >2d} | CID:{: >3d} |'
+                        'personalized model param: norm {: >.4f} ({:>4f}->{:>4f})| '
+                        'loss {:>.4f} | Acc {:>5.2f}% | Time: {:>.2f}s'.format(
+                            round_i, c.cid, 
+                            stat['norm'], stat['min'], stat['max'],
+                            stat['loss'], stat['acc'] * 100, stat['time']
+                        ))
                 
-                # Add solutions and stats
-                solns.append(soln)
-                stats.append(stat)
+                    # Add solutions and stats
+                    solns.append(soln)
+                    stats.append(stat)
 
-            # Track communication cost
-            self.metrics.extend_commu_stats(round_i, stats)
+                # Track communication cost
+                # partial_commu_alg = ['fedavg', 'perfedavg']
+                non_commu_num_clients = len(self.clients) - min(self.clients_per_round, len(self.clients))
+                non_commu_clients = np.random.choice(len(self.clients), non_commu_num_clients, replace = False).tolist()
+                for client in range(len(stats)):
+                    if client in non_commu_clients:
+                #         if self.algo in partial_commu_alg:
+                #             stats[client]['bytes_w'] = 0
+                #             stats[client]['bytes_r'] = 0
+                #         else:
+                        stats[client]['bytes_w'] = 0
+                self.metrics.extend_commu_stats(round_i, stats)
 
-            # Choose K clients and use their local model to update the global model
-            self.latest_model = self.aggregate(solns, seed = round_i)
+                # Choose K clients and use their local model to update the global model
+                self.latest_model = self.aggregate(solns, seed = round_i)
+
+            else:
+                # choose K clients for the aggregation
+                selected_clients = self.select_clients(seed = round_i)
+
+                # Do local update for the selected clients
+                solns = []
+                stats = []
+                for i, c in enumerate(selected_clients, start = 1):
+                    # Communicate the latest global model
+                    c.set_local_model_params(self.latest_model)
+
+                    # Solve local and personal minimization
+                    soln, stat = c.local_train()
+
+                    # Decay the learning rate for both local optimization problem
+                    # c.inverse_prop_decay_learning_rate(round_i)
+
+                    if self.print_result:
+                        print('Round: {: >2d} | CID:{: >3d}({:>2d}/{:>2d})|'
+                        'loss {:>.4f} | Acc{:>5.2f}% | Time: {:>.2f}s'.format(
+                            round_i, c.cid, i, self.clients_per_round,
+                            stat['loss'], stat['acc'] * 100, stat['time']
+                        ))
+
+                    # Add solutions and stats
+                    solns.append(soln)
+                    stats.append(stat)
+
+                self.metrics.extend_commu_stats(round_i, stats)
+
+                self.latest_model = self.aggregate(solns, seed = round_i)
 
         # Test final model on train data
         self.test_latest_model_on_train_data(self.num_round)
@@ -102,9 +162,10 @@ class Server(object):
         averaged_solution = torch.zeros_like(self.latest_model)
 
         # Select K clients
-        num_clients = min(self.clients_per_round, len(self.clients))
-        np.random.seed(seed)
-        solns = [solns[i] for i in np.random.choice(len(solns), num_clients, replace = False)]
+        if len(solns) != self.clients_per_round:
+            num_clients = min(self.clients_per_round, len(self.clients))
+            np.random.seed(seed)
+            solns = [solns[i] for i in np.random.choice(len(solns), num_clients, replace = False)]
         chosen_solns = []
         num_samples = []
         for num_sample, local_soln in solns:

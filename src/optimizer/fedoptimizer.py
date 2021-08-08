@@ -15,6 +15,9 @@ class grad_desc(Optimizer):
         defaults = dict(lr = lr, weight_decay = weight_decay)
         super(grad_desc, self).__init__(params, defaults)
 
+    def __setstate__(self, state):
+        super(GD, self).__setstate__(state)
+
     def step(self, closure = None, beta = 0):
         loss = None
         if closure is not None:

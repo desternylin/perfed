@@ -80,7 +80,7 @@ class MiniDataset(Dataset):
         self.data = np.array(data)
         self.labels = np.array(labels).astype("int64")
 
-        if self.data.ndim == 4 and self.data.shape[3] == 3 and selr.data.shape[1] == 28:
+        if self.data.ndim == 4 and self.data.shape[3] == 3 and self.data.shape[1] == 28:
             self.data = self.data.astype("uint8")
             self.transform = transforms.Compose(
                 [transforms.RandomHorizontalFlip(),
@@ -103,11 +103,13 @@ class MiniDataset(Dataset):
                  ]
             )
         elif self.data.ndim == 4 and self.data.shape[1] == 32:
+            self.data = self.data.astype("uint8")
             self.transform = transforms.Compose(
                 [transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
             )
         elif self.data.ndim == 4 and self.data.shape[1] == 178:
+            self.data = self.data.astype("uint8")
             self.transform = transforms.Compose(
                 [transforms.CenterCrop((178, 178)),
                 transforms.Resize((128, 128)),
@@ -166,15 +168,16 @@ class Metrics(object):
         self.acc_var_on_eval_data = [0] * num_rounds
 
         self.result_path = mkdir(os.path.join('./result', self.options['dataset']))
-        suffix = '{}_sd{}_lr{}_rd{}_bs{}_lam{}_q{}_intd{}_{}'.format(name,
+        suffix = '{}_sd{}_lr{}_plr{}_lam{}_intd{}_c{}_r{}_k{}_lay{}'.format(name,
                                                     options['seed'],
                                                     options['local_lr'],
-                                                    options['num_round'],
-                                                    options['batch_size'],
+                                                    options['person_lr'],
                                                     options['lamda'],
-                                                    options['q'],
                                                     options['d'],
-                                                    'a' if options['simpleaverage'] else 'w')
+                                                    options['c'],
+                                                    options['r'],
+                                                    options['k'],
+                                                    options['num_layers_keep'])
 
         self.exp_name = '{}_{}_{}_{}'.format(time.strftime('%Y-%m-%dT%H-%M-%S'), options['algo'],
                                              options['model'], suffix)

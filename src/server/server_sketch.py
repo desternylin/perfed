@@ -50,10 +50,24 @@ class ServerSketch(object):
         print('D: {}'.format(self.D))
         print('sketchMask.sum(): {}'.format(self.sketchMask.sum()))
 
-        self.sketch_c = options['c']
-        self.sketch_r = options['r']
-        self.sketch_k = options['k']
-        self.p2 = options['p2']
+        self.full_model_dim = options['person_model_dim']
+        if options['c'] < 1:
+            self.sketch_c = round(self.full_model_dim * options['c'])
+        else:
+            self.sketch_c = options['c']
+        if options['r'] < 1:
+            self.sketch_r = round(self.full_model_dim * options['r'])
+        else:
+            self.sketch_r = options['r']
+        if options['k'] < 1:
+            self.sketch_k = round(self.full_model_dim * options['k'])
+        else:
+            self.sketch_k = options['k']
+
+        if self.sketch_k * options['p2'] < self.full_model_dim:
+            self.p2 = options['p2']
+        else:
+            self.p2 = int(self.full_model_dim / self.sketch_k)
         self.doAccumulateError = options['doaccumulateerror']
 
         # Setup clients
@@ -152,7 +166,7 @@ class ServerSketch(object):
 
             summedSketch = np.sum(workersketches) / len(selected_clients)
             if self.p2 > 0:
-                candidateTopk = summedSketch.unSketch(k = self.sketch_k * self.p2)
+                candidateTopk = summedSketch.unSketch(k = int(self.sketch_k * self.p2))
                 # Get coordinates that were populated by the unsketch
                 candidateHHCoords = candidateTopk.nonzero()
                 candidateTopk = torch.zeros_like(candidateTopk)

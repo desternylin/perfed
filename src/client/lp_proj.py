@@ -1,4 +1,4 @@
-from scr.client.clientbase import Client
+from src.client.clientbase import Client
 from src.optimizer.fedoptimizer import lp_proj_optimizer
 from src.model.model import choose_model
 import torch
@@ -91,29 +91,52 @@ class LpProjClient(Client):
         for epoch in range(self.num_epoch):
             last_train_loss = train_loss
             train_loss = train_netloss = train_acc = train_total = 0.0
-            for x, y in self.train_dataloader:
-                if self.gpu:
-                    x, y = x.cuda(), y.cuda()
-                self.optimizer.zero_grad()
-                pred = self.model(x)
-                if torch.isnan(pred.max()):
-                    from IPython import embed
-                    embed()
-                loss = self.criterion(pred, y)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm(self.model.parameters(), 60)
-                self.optimizer.step(self.local_model)
-                self.person_model_params = self.get_flat_model_params()
-                conv_weight = self.local_model - torch.matmul(self.Proj.data, self.person_model_params)
-                regularizer = self.lamda * torch.norm(conv_weight, p = self.p)
 
-                _, predicted = torch.max(pred, 1)
-                correct = predicted.eq(y).sum().item()
-                target_size = y.size(0)
-                train_netloss += loss.item() * y.size(0)
-                train_loss += (loss.item() + regularizer.item()) * y.size(0)
-                train_acc += correct
-                train_total += target_size
+            x, y = self.get_next_train_batch()
+            if self.gpu:
+                x, y = x.cuda(), y.cuda()
+            self.optimizer.zero_grad()
+            pred = self.model(x)
+            if torch.isnan(pred.max()):
+                from IPython import embed
+                embed()
+            loss = self.criterion(pred, y)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 60)
+            self.optimizer.step(self.local_model)
+            self.person_model_params = self.get_flat_model_params()
+            conv_weight = self.local_model - torch.matmul(self.Proj.data, self.person_model_params)
+            regularizer = self.lamda * torch.norm(conv_weight, p = self.p)
+
+            _, predicted = torch.max(pred, 1)
+            train_acc = predicted.eq(y).sum().item()
+            train_total = y.size(0)
+            train_netloss = loss.item() * y.size(0)
+            train_loss = (loss.item() + regularizer.item()) * y.size(0)
+
+            # for x, y in self.train_dataloader:
+            #     if self.gpu:
+            #         x, y = x.cuda(), y.cuda()
+            #     self.optimizer.zero_grad()
+            #     pred = self.model(x)
+            #     if torch.isnan(pred.max()):
+            #         from IPython import embed
+            #         embed()
+            #     loss = self.criterion(pred, y)
+            #     loss.backward()
+            #     torch.nn.utils.clip_grad_norm(self.model.parameters(), 60)
+            #     self.optimizer.step(self.local_model)
+            #     self.person_model_params = self.get_flat_model_params()
+            #     conv_weight = self.local_model - torch.matmul(self.Proj.data, self.person_model_params)
+            #     regularizer = self.lamda * torch.norm(conv_weight, p = self.p)
+
+            #     _, predicted = torch.max(pred, 1)
+            #     correct = predicted.eq(y).sum().item()
+            #     target_size = y.size(0)
+            #     train_netloss += loss.item() * y.size(0)
+            #     train_loss += (loss.item() + regularizer.item()) * y.size(0)
+            #     train_acc += correct
+            #     train_total += target_size
             
             if train_loss - last_train_loss < 1e-20 and epoch > 1:
                 break

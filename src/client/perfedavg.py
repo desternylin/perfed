@@ -88,6 +88,9 @@ class PerFedAvgClient(Client):
         stats = {'id': self.cid, 'bytes_w': bytes_w, 'bytes_r': bytes_r,
             'time': round(end_time - begin_time, 2)}
         stats.update(return_dict)
+
+        # self.print_layer_norm(self.local_model)
+
         return (len(self.train_data), self.local_model), stats
 
     def train_one_step(self):

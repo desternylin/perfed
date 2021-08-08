@@ -11,6 +11,8 @@ class Client(object):
         self.test_data = test_data
         self.train_dataloader = DataLoader(train_data, batch_size = options['batch_size'], shuffle = True)
         self.test_dataloader = DataLoader(test_data, batch_size = options['batch_size'], shuffle = False)
+        self.iter_trainloader = iter(self.train_dataloader)
+        self.iter_testloader = iter(self.test_dataloader)
 
         self.person_model_params = self.get_flat_model_params()
         # self.local_model_bytes = self.local_model.numel() * self.local_model.element_size()
@@ -42,6 +44,24 @@ class Client(object):
 
     def inverse_prop_decay_learning_rate(self, round_i):
         self.local_lr /= round_i + 1
+
+    def print_layer_norm(self, local_model):
+        total_layer_num = len(self.model.weight_keys)
+        layer_param_num = []
+        model_dict = self.model.state_dict()
+        for layer_keys in self.model.weight_keys:
+            tmp_num = 0
+            for key in model_dict.keys():
+                if key in layer_keys:
+                    tmp_num += model_dict[key].numel()
+            layer_param_num.append(tmp_num)
+        print('>>> layer_param_num = {}'.format(layer_param_num))
+        layer_model = torch.split(local_model, layer_param_num)
+        # layer_model = torch.split(local_model, 1)
+        layer_norm = []
+        for layer in range(len(layer_model)):
+            layer_norm.append(round(torch.norm(layer_model[layer]).item(), 3))
+        print('>>> layer_norm = {}'.format(layer_norm))
 
     def get_flat_model_params(self):
         params = []

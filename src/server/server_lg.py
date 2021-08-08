@@ -139,6 +139,10 @@ class ServerLg(object):
                 self.latest_model[key] = torch.div(self.latest_model[key], len(selected_clients))
 
             # Track communication cost
+            non_commu_clients = [c for c in self.clients if c not in selected_clients]
+            for c in non_commu_clients:
+                stat = {'id': c.cid, 'bytes_w': 0, 'bytes_r': self.num_param_glob}
+                stats.append(stat)
             self.metrics.extend_commu_stats(round_i, stats)
 
         # Test final model on train data
