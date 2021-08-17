@@ -24,15 +24,21 @@ class RobustServer(Server):
             clients_id.append(c.cid)
         return clients_id
 
-    def aggregate(self, solns, seed):
+    def aggregate(self, solns, seed, stats):
         averaged_solution = torch.zeros_like(self.latest_model)
 
         # Select K clients
-        num_clients = min(self.clients_per_round, len(self.clients))
-        np.random.seed(seed)
-        chosen_index = np.random.choice(len(self.all_clients_id), num_clients, replace = False)
-        chosen_id = [self.all_clients_id[i] for i in chosen_index]
-        solns = [solns[i] for i in chosen_index]
+        if len(solns) != self.clients_per_round:
+            num_clients = min(self.clients_per_round, len(self.clients))
+            np.random.seed(seed)
+            chosen_index = np.random.choice(len(self.all_clients_id), num_clients, replace = False)
+            chosen_id = [self.all_clients_id[i] for i in chosen_index]
+            solns = [solns[i] for i in chosen_index]
+        else:
+            chosen_id = []
+            for cstat in stats:
+                chosen_id.append(cstat['id'])
+                
         num_samples = []
         chosen_solns = []
 
@@ -44,6 +50,8 @@ class RobustServer(Server):
                     local_soln = - local_soln
                 elif self.attack == 'gaussian':
                     local_soln = torch.normal(mean = 0., std = 100., size = local_soln.size())
+                    if self.gpu:
+                        local_soln = local_soln.to(self.device)
             chosen_solns.append(local_soln)
             num_samples.append(num_sample)
 

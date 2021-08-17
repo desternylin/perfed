@@ -137,15 +137,15 @@ def read_options():
                         type = int)
     parser.add_argument('--c',
                         help = 'columns in the sketch',
-                        type = int,
+                        type = float,
                         default = 40)
     parser.add_argument('--r',
                         help = 'rows in the sketch',
-                        type = int,
+                        type = float,
                         default = 7)
     parser.add_argument('--k',
                         help = 'generate k-sparse vector from the sketch',
-                        type = int,
+                        type = float,
                         default = 10)
     parser.add_argument('--momentum',
                         help = 'momentum when doing update in sketched-sgd',
@@ -197,6 +197,7 @@ def read_options():
     proj_algo = ['proj', 'proj_fair', 'lp_proj']
     tmp_model = choose_model(options)
     person_model_dim = sum(p.numel() for p in tmp_model.parameters())
+    print('Total number of parameters is {}'.format(person_model_dim))
     if options['algo'] in proj_algo:
         Proj = torch.normal(mean = 0., std = 1., size = (options['d'], person_model_dim))
         Proj = F.normalize(Proj, p = 2, dim = 1)

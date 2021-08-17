@@ -7,9 +7,13 @@ import time
 class ProjClient(Client):
     def __init__(self, cid, train_data, test_data, options):
         self.model = choose_model(options)
-        self.optimizer = proj_optimizer(self.model.parameters(), Proj = options['Proj'], lr = options['person_lr'], lamda = options['lamda'], weight_decay = options['wd'])
         self.lamda = options['lamda']
         self.Proj = options['Proj']
+        self.gpu = options['gpu'] if 'gpu' in options else False
+        self.device = options['device']
+        if self.gpu:
+            self.Proj = self.Proj.to(self.device)
+        self.optimizer = proj_optimizer(self.model.parameters(), Proj = self.Proj, lr = options['person_lr'], lamda = self.lamda, weight_decay = options['wd'])
         self.move_model_to_gpu(self.model, options)
         local_model_dim = options['d']
         self.local_model = torch.zeros(local_model_dim)

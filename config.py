@@ -1,6 +1,6 @@
 # Global parameters
 DATASETS = ['mnist', 'synthetic', 'emnist', 'fashionmnist', 'cifar', 'celeba']
-MODELS = ['logistic', '2nn', '1nn']
+MODELS = ['logistic', '2nn', '1nn', 'cifar', 'vgg']
 ALGORITHMS = {'me': 'MeClient', 
                 'me_fair': 'MeFairClient',
                 'proj': 'ProjClient',
@@ -22,11 +22,16 @@ class ModelConfig(object):
 
     def __call__(self, dataset, model):
         dataset = dataset.split('_')[0]
-        if dataset in ['mnist', 'emnist', 'fashionmnist'] :
+        if dataset in ['mnist', 'fashionmnist'] :
             if model == 'logistic' or model == '2nn' or model == '1nn':
                 return {'input_shape': 784, 'num_class': 10}
             else:
-                return {'input_shape': (28, 28, 1), 'num_class':10}
+                return {'input_shape': (28, 28, 1), 'num_class': 10}
+        elif dataset == 'emnist':
+            if model in ['logistic', '2nn', '1nn']:
+                return {'input_shape': 784, 'num_class': 62}
+            else:
+                return {'input_shape': (28, 28, 1), 'num_class': 62}
         elif dataset == 'synthetic':
             return {'input_shape': 60, 'num_class': 10}
         elif dataset == 'cifar':

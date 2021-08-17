@@ -9,6 +9,7 @@ class Server(object):
     def __init__(self, dataset, options, name = ''):
         # Basic parameters
         self.gpu = options['gpu']
+        self.device = options['device']
         self.all_train_data_num = 0
         self.clients = self.setup_clients(dataset, options)
         assert len(self.clients) > 0
@@ -67,6 +68,8 @@ class Server(object):
             # self.latest_model = torch.zeros(self.local_model_dim, requires_grad = True)
         else:
             self.latest_model = torch.zeros(self.local_model_dim)
+        if self.gpu:
+            self.latest_model = self.latest_model.cuda()
 
         for round_i in range(self.num_round):
             print('>>> Round {}, latest model.norm = {}'.format(round_i, self.latest_model.norm()))
@@ -117,7 +120,7 @@ class Server(object):
                 self.metrics.extend_commu_stats(round_i, stats)
 
                 # Choose K clients and use their local model to update the global model
-                self.latest_model = self.aggregate(solns, seed = round_i)
+                self.latest_model = self.aggregate(solns, seed = round_i, stats = stats)
 
             else:
                 # choose K clients for the aggregation
@@ -149,7 +152,7 @@ class Server(object):
 
                 self.metrics.extend_commu_stats(round_i, stats)
 
-                self.latest_model = self.aggregate(solns, seed = round_i)
+                self.latest_model = self.aggregate(solns, seed = round_i, stats = stats)
 
         # Test final model on train data
         self.test_latest_model_on_train_data(self.num_round)
@@ -158,7 +161,7 @@ class Server(object):
         # Save tracked information
         self.metrics.write()
 
-    def aggregate(self, solns, seed):
+    def aggregate(self, solns, seed, stats):
         averaged_solution = torch.zeros_like(self.latest_model)
 
         # Select K clients

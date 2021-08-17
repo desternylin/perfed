@@ -17,6 +17,7 @@ class DittoClient(Client):
         # self.local_model = torch.zeros(local_model_dim)
         self.local_model = self.get_flat_model_params()
         self.global_model = choose_model(options)
+        self.move_model_to_gpu(self.global_model, options)
         set_flat_params_to(self.global_model, self.local_model)
         self.global_optimizer = grad_desc(self.global_model.parameters(), lr = options['local_lr'], weight_decay = options['wd'])
 
@@ -170,7 +171,7 @@ class DittoClient(Client):
             loss = self.criterion(pred, y)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.global_model.parameters(), 60)
-            self.optimizer.step()
+            self.global_optimizer.step()
 
             _, predicted = torch.max(pred, 1)
             train_acc = predicted.eq(y).sum().item()

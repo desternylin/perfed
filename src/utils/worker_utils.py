@@ -52,6 +52,8 @@ def read_data(train_data_dir, test_data_dir, key=None):
         train_data.update(cdata['user_data'])
 
     for cid, v in train_data.items():
+        train_x = np.array(v['x'])
+        # print('data.shape = {}'.format(train_x.shape))
         train_data[cid] = MiniDataset(v['x'], v['y'])
 
     test_files = os.listdir(test_data_dir)
@@ -108,7 +110,7 @@ class MiniDataset(Dataset):
                 [transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
             )
-        elif self.data.ndim == 4 and self.data.shape[1] == 178:
+        elif self.data.ndim == 4 and self.data.shape[2] == 178:
             self.data = self.data.astype("uint8")
             self.transform = transforms.Compose(
                 [transforms.CenterCrop((178, 178)),
@@ -168,7 +170,7 @@ class Metrics(object):
         self.acc_var_on_eval_data = [0] * num_rounds
 
         self.result_path = mkdir(os.path.join('./result', self.options['dataset']))
-        suffix = '{}_sd{}_lr{}_plr{}_lam{}_intd{}_c{}_r{}_k{}_lay{}'.format(name,
+        suffix = '{}_sd{}_lr{}_plr{}_lam{}_intd{}_c{}_r{}_k{}_lay{}_s{}_mfr{}_atk{}_agr{}'.format(name,
                                                     options['seed'],
                                                     options['local_lr'],
                                                     options['person_lr'],
@@ -177,7 +179,11 @@ class Metrics(object):
                                                     options['c'],
                                                     options['r'],
                                                     options['k'],
-                                                    options['num_layers_keep'])
+                                                    options['num_layers_keep'],
+                                                    options['server'],
+                                                    options['mali_frac'],
+                                                    options['attack'],
+                                                    options['aggr'])
 
         self.exp_name = '{}_{}_{}_{}'.format(time.strftime('%Y-%m-%dT%H-%M-%S'), options['algo'],
                                              options['model'], suffix)

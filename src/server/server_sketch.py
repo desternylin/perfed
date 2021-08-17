@@ -117,6 +117,7 @@ class ServerSketch(object):
 
     def step(self, weightUpdate):
         flat_model_params = self.get_flat_model_params()
+        weightUpdate = weightUpdate.cpu()
         new_model_params = flat_model_params - self.local_lr * weightUpdate
         self.set_flat_params_to(new_model_params)
 
@@ -178,11 +179,15 @@ class ServerSketch(object):
                 w = topk(candidateTopk, k = self.sketch_k)
                 w = w / len(selected_clients)
                 weightUpdate = torch.zeros(self.D)
+                if self.gpu:
+                    weightUpdate = weightUpdate.cuda()
                 weightUpdate[self.sketchMask] = w
             else:
                 assert(self.p2 == 0)
                 w = summedSketch.unSketch(k = self.sketch_k)
                 weightUpdate = torch.zeros(self.D)
+                if self.gpu:
+                    weightUpdate = weightUpdate.cuda()
                 weightUpdate[self.sketchMask] = w
 
             # zero out the coords of u, v that are being updated

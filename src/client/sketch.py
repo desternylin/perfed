@@ -46,11 +46,20 @@ class SketchClient(Client):
         self.momentum = options['momentum']
 
         # make sketch
-        self.workersketch = CSVec(d = options['sketchMask'].sum().item(), c = self.sketch_c, r = self.sketch_r)
+        if self.gpu:
+            self.device = 'cuda' 
+        else:
+            self.device = 'cpu'
+        self.workersketch = CSVec(d = options['sketchMask'].sum().item(), c = self.sketch_c, r = self.sketch_r, device = self.device)
         self.model = copy.deepcopy(model)
         # self.model = model
         self.move_model_to_gpu(self.model, options)
         self.person_model_params = self.get_flat_model_params()
+
+        if self.gpu:
+            self.u = self.u.cuda()
+            self.v = self.v.cuda()
+
 
     # @staticmethod
     # def move_model_to_gpu(model, options):

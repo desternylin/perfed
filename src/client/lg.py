@@ -7,7 +7,7 @@ import time
 import numpy as np
 import copy
 
-class LgClient(object):
+class LgClient(Client):
     def __init__(self, cid, train_data, test_data, options, model):
         self.cid = cid
         self.train_data = train_data
