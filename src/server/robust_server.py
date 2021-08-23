@@ -74,14 +74,15 @@ class RobustServer(Server):
         elif self.aggr == 'krum':
             f = 5
             dists = torch.zeros(len(chosen_solns), len(chosen_solns))
+            scores = torch.zeros(len(chosen_solns))
             for i in range(len(chosen_solns)):
                 for j in range(i, len(chosen_solns)):
                     dists[i][j] = torch.norm(chosen_solns[i] - chosen_solns[j], p = 2)
                     dists[j][i] = dists[i][j]
             for i in range(len(chosen_solns)):
                 d = dists[i]
-                d.sort()
-                scores[i] = d[:len(points) - f - 1].sum()
+                d, _ = d.sort()
+                scores[i] = d[:len(chosen_solns) - f - 1].sum()
             averaged_solution = chosen_solns[torch.argmin(scores).item()]
 
         return averaged_solution.detach()
