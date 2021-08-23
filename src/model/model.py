@@ -256,6 +256,96 @@ class VGG16(nn.Module):
         logits = self.classifier(x.view(-1, 512*4*4))
         return logits
 
+# CNN for CelebA dataset
+class CelebaNet(nn.Module):
+    def __init__(self, num_features, num_classes):
+        super(CelebaNet, self).__init__()
+
+        self.block_1 = nn.Sequential(
+            nn.Conv2d(in_channels = 3,
+                      out_channels = 32,
+                      kernel_size = (3, 3),
+                      stride = (1, 1),
+                      padding = 1),
+            nn.BatchNorm2d(32),
+            nn.MaxPool2d(kernel_size = (2, 2),
+                         stride = (2, 2)),
+            nn.ReLU()
+        )
+
+        self.block_2 = nn.Sequential(
+            nn.Conv2d(in_channels = 32,
+                      out_channels = 32,
+                      kernel_size = (3, 3),
+                      stride = (1, 1),
+                      padding = 1),
+            nn.BatchNorm2d(32),
+            nn.MaxPool2d(kernel_size = (2, 2),
+                         stride = (2, 2)),
+            nn.ReLU()
+        )
+
+        self.block_3 = nn.Sequential(
+            nn.Conv2d(in_channels = 32,
+                      out_channels = 32,
+                      kernel_size = (3, 3),
+                      stride = (1, 1),
+                      padding = 1),
+            nn.BatchNorm2d(32),
+            nn.MaxPool2d(kernel_size = (2, 2),
+                         stride = (2, 2)),
+            nn.ReLU()
+        )
+
+        self.block_4 = nn.Sequential(
+            nn.Conv2d(in_channels = 32,
+                      out_channels = 32,
+                      kernel_size = (3, 3),
+                      stride = (1, 1),
+                      padding = 1),
+            nn.BatchNorm2d(32),
+            nn.MaxPool2d(kernel_size = (2, 2),
+                         stride = (2, 2)),
+            nn.ReLU()
+        )
+
+        self.classifier = nn.Sequential(
+            nn.Linear(32 * 8 * 8, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, num_classes)
+        )
+
+        for m in self.modules():
+            if isinstance(m, torch.nn.Conv2d):
+                #n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                #m.weight.data.normal_(0, np.sqrt(2. / n))
+                m.weight.detach().normal_(0, 0.05)
+                if m.bias is not None:
+                    m.bias.detach().zero_()
+            elif isinstance(m, torch.nn.Linear):
+                m.weight.detach().normal_(0, 0.05)
+                m.bias.detach().detach().zero_()
+        
+        self.weight_keys = [['block_1.0.weight', 'block_1.0.bias'], 
+                            ['block_1.1.weight', 'block_1.1.bias', 'block_1.1.running_mean', 'block_1.1.running_var', 'block_1.1.num_batches_tracked'], 
+                            ['block_2.0.weight', 'block_2.0.bias'], 
+                            ['block_2.1.weight', 'block_2.1.bias', 'block_2.1.running_mean', 'block_2.1.running_var', 'block_2.1.num_batches_tracked'], 
+                            ['block_3.0.weight', 'block_3.0.bias'], 
+                            ['block_3.1.weight', 'block_3.1.bias', 'block_3.1.running_mean', 'block_3.1.running_var', 'block_3.1.num_batches_tracked'], 
+                            ['block_4.0.weight', 'block_4.0.bias'], 
+                            ['block_4.1.weight', 'block_4.1.bias', 'block_4.1.running_mean', 'block_4.1.running_var', 'block_4.1.num_batches_tracked'], 
+                            ['classifier.0.weight', 'classifier.0.bias'], 
+                            ['classifier.2.weight', 'classifier.2.bias']]
+
+    def forward(self, x):
+        x = self.block_1(x)
+        x = self.block_2(x)
+        x = self.block_3(x)
+        x = self.block_4(x)
+
+        logits = self.classifier(x.view(-1, 32 * 8 * 8))
+        return logits
+
 def choose_model(options):
     model_name = str(options['model']).lower()
     if model_name == 'logistic':
@@ -268,6 +358,8 @@ def choose_model(options):
         return CifarNet()
     elif model_name == 'vgg':
         return VGG16(options['input_shape'], options['num_class'])
+    elif model_name == 'celebacnn':
+        return CelebaNet(options['input_shape'], options['num_class'])
     else:
         raise ValueError("Not support model: {}!".format(model_name))
 

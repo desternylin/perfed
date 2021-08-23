@@ -1,6 +1,6 @@
 # Global parameters
 DATASETS = ['mnist', 'synthetic', 'emnist', 'fashionmnist', 'cifar', 'celeba']
-MODELS = ['logistic', '2nn', '1nn', 'cifar', 'vgg']
+MODELS = ['logistic', '2nn', '1nn', 'cifar', 'vgg', 'celebacnn']
 ALGORITHMS = {'me': 'MeClient', 
                 'me_fair': 'MeFairClient',
                 'proj': 'ProjClient',

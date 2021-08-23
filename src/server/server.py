@@ -32,6 +32,12 @@ class Server(object):
         self.aggr = options['aggr']
         self.algo = options['algo']
 
+        proj_algo = ['proj', 'lp_proj', 'proj_fair']
+        if self.algo in proj_algo:
+            self.Proj = options['Proj']
+            if self.gpu:
+                self.Proj = self.Proj.to(self.device)
+
     def setup_clients(self, dataset, options):
         users, train_data, test_data = dataset
 
@@ -79,6 +85,7 @@ class Server(object):
             self.test_latest_model_on_eval_data(round_i)
 
             partial_commu_alg = ['fedavg', 'perfedavg']
+            proj_algo = ['proj', 'lp_proj', 'proj_fair']
             if self.algo not in partial_commu_alg:
                 # Do local update for all clients
                 solns = [] # Buffer for receiving client solutions
@@ -88,7 +95,10 @@ class Server(object):
                     c.set_local_model_params(self.latest_model)
 
                     # Solve local and personal minimization
-                    soln, stat = c.local_train()
+                    if self.algo in proj_algo:
+                        soln, stat = c.local_train(self.Proj)
+                    else:
+                        soln, stat = c.local_train()
 
                     # Decay the learning rate for both local optimization problem
                     # c.inverse_prop_decay_learning_rate(round_i)
@@ -270,7 +280,12 @@ class Server(object):
 
         for c in self.clients:
             c.set_local_model_params(self.latest_model)
-            test_dict = c.local_test(use_eval_data = use_eval_data)
+
+            proj_algo = ['proj', 'lp_proj', 'proj_fair']
+            if self.algo in proj_algo:
+                test_dict = c.local_test(self.Proj, use_eval_data = use_eval_data)
+            else:
+                test_dict = c.local_test(use_eval_data = use_eval_data)
             num_sample = test_dict['test_num']
             acc = test_dict['acc']
             loss = test_dict['loss']

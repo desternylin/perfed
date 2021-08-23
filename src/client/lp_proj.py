@@ -7,27 +7,29 @@ import time
 class LpProjClient(Client):
     def __init__(self, cid, train_data, test_data, options):
         self.model = choose_model(options)
-        self.Proj = options['Proj']
+        # self.Proj = options['Proj']
         self.lamda = options['lamda']
         self.p = options['p']
         self.gpu = options['gpu'] if 'gpu' in options else False
         self.device = options['device']
-        if self.gpu:
-            self.Proj = self.Proj.to(self.device)
-        self.optimizer = lp_proj_optimizer(self.model.parameters(), p = self.p, Proj = self.Proj, lr = options['person_lr'], lamda = self.lamda, weight_decay = options['wd'])
+        # if self.gpu:
+        #     self.Proj = self.Proj.to(self.device)
+        # self.optimizer = lp_proj_optimizer(self.model.parameters(), p = self.p, Proj = self.Proj, lr = options['person_lr'], lamda = self.lamda, weight_decay = options['wd'])
+        self.optimizer = lp_proj_optimizer(self.model.parameters(), p = self.p, lr = options['person_lr'], lamda = self.lamda, weight_decay = options['wd'])
         self.move_model_to_gpu(self.model, options)
         local_model_dim = options['d']
         self.local_model = torch.zeros(local_model_dim)
 
         super(LpProjClient, self).__init__(cid, train_data, test_data, options)
 
-    def local_train(self):
+    def local_train(self, Proj):
         bytes_w = self.local_model_bytes
         begin_time = time.time()
 
         for local_round in range(self.num_local_round):
-            person_stats = self.person_train()
-            proj_person_weight = torch.matmul(self.Proj, self.person_model_params)
+            person_stats = self.person_train(Proj)
+            # proj_person_weight = torch.matmul(self.Proj, self.person_model_params)
+            proj_person_weight = torch.matmul(Proj, self.person_model_params)
             conv_weight = self.local_model - proj_person_weight
             self.local_model = self.local_model - self.local_lr * self.lamda * torch.sign(conv_weight) * (torch.abs(conv_weight) / torch.norm(conv_weight, p = self.p))**(self.p - 1)
 
@@ -39,7 +41,7 @@ class LpProjClient(Client):
 
         return (len(self.train_data), self.local_model), stats
 
-    def local_test(self, use_eval_data = True):
+    def local_test(self, Proj, use_eval_data = True):
         if use_eval_data:
             dataloader, dataset = self.test_dataloader, self.test_data
         else:
@@ -62,7 +64,8 @@ class LpProjClient(Client):
                 test_acc += correct
                 test_total += target_size
 
-        regularizer = self.lamda * torch.norm(self.local_model - torch.matmul(self.Proj.data, self.person_model_params), p = self.p)
+        # regularizer = self.lamda * torch.norm(self.local_model - torch.matmul(self.Proj.data, self.person_model_params), p = self.p)
+        regularizer = self.lamda * torch.norm(self.local_model - torch.matmul(Proj.data, self.person_model_params), p = self.p)
         test_loss = (test_netloss + regularizer * test_total).item()
         test_dict = {'loss': test_loss, 'netloss': test_netloss,
             'acc': test_acc, 'test_num': len(dataset)}
@@ -89,7 +92,7 @@ class LpProjClient(Client):
     #     loss += self.lamda * torch.norm(conv_weight, p = self.p)
     #     return loss
 
-    def person_train(self):
+    def person_train(self, Proj):
         self.model.train()
         train_loss = train_netloss = train_acc = train_total = 0.0
         for epoch in range(self.num_epoch):
@@ -107,9 +110,10 @@ class LpProjClient(Client):
             loss = self.criterion(pred, y)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 60)
-            self.optimizer.step(self.local_model)
+            self.optimizer.step(self.local_model, Proj)
             self.person_model_params = self.get_flat_model_params()
-            conv_weight = self.local_model - torch.matmul(self.Proj.data, self.person_model_params)
+            # conv_weight = self.local_model - torch.matmul(self.Proj.data, self.person_model_params)
+            conv_weight = self.local_model - torch.matmul(Proj.data, self.person_model_params)
             regularizer = self.lamda * torch.norm(conv_weight, p = self.p)
 
             _, predicted = torch.max(pred, 1)

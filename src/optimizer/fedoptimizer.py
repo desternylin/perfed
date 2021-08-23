@@ -93,13 +93,13 @@ class me_optimizer(grad_desc):
         return {'lamda': self.lamda}
         
 class proj_optimizer(grad_desc):
-    def __init__(self, params, Proj, lr = required, lamda = 1.0, weight_decay = 0.0):
+    def __init__(self, params, lr = required, lamda = 1.0, weight_decay = 0.0):
         self.lamda = lamda
-        self.Proj = Proj
+        # self.Proj = Proj
 
         super(proj_optimizer, self).__init__(params, lr, weight_decay)
 
-    def step(self, local_weight, closure = None):
+    def step(self, local_weight, Proj, closure = None):
         loss = None
         if closure is not None:
             loss = closure()
@@ -107,7 +107,7 @@ class proj_optimizer(grad_desc):
         assert len(self.param_groups) == 1
         regularizer = copy.deepcopy(self.param_groups[0]['params'])
         flat_person_weight = get_flat_params_from_param_groups(regularizer)
-        flat_regularizer = self.lamda * torch.matmul(self.Proj.t().data, local_weight - torch.matmul(self.Proj.data, flat_person_weight))
+        flat_regularizer = self.lamda * torch.matmul(Proj.t().data, local_weight - torch.matmul(Proj.data, flat_person_weight))
         regularizer = set_flat_params_to_param_groups(regularizer, flat_regularizer)
 
         for group in self.param_groups:
@@ -124,7 +124,7 @@ class proj_optimizer(grad_desc):
         return loss
 
     def get_optimizer_param(self):
-        return{'lamda': self.lamda, 'Proj': self.Proj}
+        return{'lamda': self.lamda}
 
 class lp_optimizer(grad_desc):
     def __init__(self, params, p, lr = required, lamda = 1.0, weight_decay = 0.0):
@@ -162,14 +162,14 @@ class lp_optimizer(grad_desc):
         return{'lamda': self.lamda, 'p': self.p}
 
 class lp_proj_optimizer(grad_desc):
-    def __init__(self, params, p, Proj, lr = required, lamda = 1.0, weight_decay = 0.0):
+    def __init__(self, params, p, lr = required, lamda = 1.0, weight_decay = 0.0):
         self.p = p
-        self.Proj = Proj
+        # self.Proj = Proj
         self.lamda = lamda
         
         super(lp_proj_optimizer, self).__init__(params, lr, weight_decay)
 
-    def step(self, local_weight, closure = None):
+    def step(self, local_weight, Proj, closure = None):
         loss = None
         if closure is not None:
             loss = closure()
@@ -177,8 +177,8 @@ class lp_proj_optimizer(grad_desc):
         assert len(self.param_groups) == 1
         regularizer = copy.deepcopy(self.param_groups[0]['params'])
         flat_person_weight = get_flat_params_from_param_groups(regularizer)
-        conv_weight = local_weight - torch.matmul(self.Proj.data, flat_person_weight)
-        flat_regularizer = self.lamda * torch.matmul(self.Proj.t().data, torch.sign(conv_weight) * (torch.abs(conv_weight) / torch.norm(conv_weight, p = self.p))**(self.p - 1))
+        conv_weight = local_weight - torch.matmul(Proj.data, flat_person_weight)
+        flat_regularizer = self.lamda * torch.matmul(Proj.t().data, torch.sign(conv_weight) * (torch.abs(conv_weight) / torch.norm(conv_weight, p = self.p))**(self.p - 1))
         regularizer = set_flat_params_to_param_groups(regularizer, flat_regularizer)
 
         for group in self.param_groups:
@@ -195,7 +195,7 @@ class lp_proj_optimizer(grad_desc):
         return loss
 
     def get_optimizer_param(self):
-        return{'lamda': self.lamda, 'p': self.p, 'Proj': self.Proj}
+        return{'lamda': self.lamda, 'p': self.p}
 
 class fair_optimizer(grad_desc):
     def __init__(self, params, q, lr = required, lamda = 1.0, weight_decay = 0.0):

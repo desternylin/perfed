@@ -72,13 +72,17 @@ class RobustServer(Server):
             stack_solution = torch.stack(chosen_solns)
             averaged_solution = torch.median(stack_solution, dim = 0)[0]
         elif self.aggr == 'krum':
+            f = 5
             dists = torch.zeros(len(chosen_solns), len(chosen_solns))
             for i in range(len(chosen_solns)):
                 for j in range(i, len(chosen_solns)):
                     dists[i][j] = torch.norm(chosen_solns[i] - chosen_solns[j], p = 2)
                     dists[j][i] = dists[i][j]
-            scores = torch.sum(dists, dim = 0)
-            averaged_solution = chosen_solns[torch.argmax(scores).item()]
+            for i in range(len(chosen_solns)):
+                d = dists[i]
+                d.sort()
+                scores[i] = d[:len(points) - f - 1].sum()
+            averaged_solution = chosen_solns[torch.argmin(scores).item()]
 
         return averaged_solution.detach()
 
@@ -93,7 +97,12 @@ class RobustServer(Server):
         for c in self.clients:
             if c.cid in self.benign_clients:
                 c.set_local_model_params(self.latest_model)
-                test_dict = c.local_test(use_eval_data = use_eval_data)
+
+                proj_algo = ['proj', 'lp_proj', 'proj_fair']
+                if self.algo in proj_algo:
+                    test_dict = c.local_test(self.Proj, use_eval_data = use_eval_data)
+                else:
+                    test_dict = c.local_test(use_eval_data = use_eval_data)
                 num_sample = test_dict['test_num']
                 acc = test_dict['acc']
                 loss = test_dict['loss']

@@ -95,11 +95,11 @@ class Client(object):
             (x, y) = next(self.iter_testloader)
         return (x, y)
 
-    def local_train(self):
-        raise NotImplementedError
+    # def local_train(self):
+    #     raise NotImplementedError
 
-    def local_test(self, use_eval_data = True):
-        raise NotImplementedError
+    # def local_test(self, use_eval_data = True):
+    #     raise NotImplementedError
 
     # def get_flat_grads(self, dataloader):
     #     raise NotImplementedError
