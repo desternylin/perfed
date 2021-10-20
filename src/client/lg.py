@@ -8,13 +8,15 @@ import numpy as np
 import copy
 
 class LgClient(Client):
-    def __init__(self, cid, train_data, test_data, options, model):
+    def __init__(self, cid, train_data, valid_data, test_data, options, model):
         self.cid = cid
         self.train_data = train_data
+        self.valid_data = valid_data
         self.test_data = test_data
         self.num_local_round = options['num_local_round']
         self.num_epoch = options['num_epoch']
         self.train_dataloader = DataLoader(train_data, batch_size = options['batch_size'] * self.num_epoch, shuffle = True)
+        self.valid_dataloader = DataLoader(valid_data, batch_size = options['batch_size'] * self.num_epoch, shuffle = False)
         self.test_dataloader = DataLoader(test_data, batch_size = options['batch_size'] * self.num_epoch, shuffle = False)
         self.iter_trainloader = iter(self.train_dataloader)
         self.iter_testloader = iter(self.test_dataloader)
@@ -33,24 +35,6 @@ class LgClient(Client):
         self.num_param_glob = options['num_param_glob']
         self.num_param_local = options['num_param_local']
 
-    # @staticmethod
-    # def move_model_to_gpu(model, options):
-    #     if 'gpu' in options and (options['gpu'] is True):
-    #         device = 0 if 'device' not in options else options['device']
-    #         torch.cuda.set_device(device)
-    #         torch.backends.cudnn.enabled = True
-    #         model.cuda()
-    #         print('>>> Use gpu on device {}'.format(device))
-    #     else:
-    #         print('>>> Do not use gpu')
-
-    # def get_flat_model_params(self):
-    #     params = []
-    #     for param in self.model.parameters():
-    #         params.append(param.data.view(-1))
-    #     flat_params = torch.cat(params)
-    #     return flat_params
-
     def local_train(self):
         bytes_w = self.num_param_glob
         bytes_r = self.num_param_glob
@@ -60,7 +44,10 @@ class LgClient(Client):
         self.model.train()
         train_loss = train_netloss = train_acc = train_total = 0.0
         for local_round in range(self.num_local_round):
-            last_train_loss = train_loss
+            if train_total == 0.0:
+                last_train_loss = 0.0
+            else:
+                last_train_loss = train_loss / train_total
             train_loss = train_netloss = train_acc = train_total = 0.0
 
             x, y = self.get_next_train_batch()
@@ -82,27 +69,7 @@ class LgClient(Client):
             train_netloss = loss.item() * y.size(0)
             train_loss = train_netloss
 
-            # for x, y in self.train_dataloader:
-            #     if self.gpu:
-            #         x, y = x.cuda(), y.cuda()
-            #     pred = self.model(x)
-            #     if torch.isnan(pred.max()):
-            #         from IPython import embed
-            #         embed()
-            #     loss = self.criterion(pred, y)
-            #     loss.backward()
-            #     torch.nn.utils.clip_grad_norm_(self.model.parameters(), 60)
-            #     self.optimizer.step()
-
-            #     _, predicted = torch.max(pred, 1)
-            #     correct = predicted.eq(y).sum().item()
-            #     target_size = y.size(0)
-            #     train_netloss += loss.item() * y.size(0)
-            #     train_loss = train_netloss
-            #     train_acc += correct
-            #     train_total += target_size
-            
-            if train_loss - last_train_loss < 1e-20 and local_round > 1:
+            if abs(train_loss / train_total - last_train_loss) < 1e-20 and epoch > 1:
                 break
 
         flat_model_params = self.get_flat_model_params()
@@ -121,9 +88,11 @@ class LgClient(Client):
         self.local_model = copy.deepcopy(self.model.state_dict())
         return self.local_model, stats
 
-    def local_test(self, use_eval_data = True):
-        if use_eval_data:
+    def local_test(self, use_eval_data = 2):
+        if use_eval_data == 2:
             dataloader, dataset = self.test_dataloader, self.test_data
+        elif use_eval_data == 1:
+            dataloader, dataset = self.valid_dataloader, self.valid_data
         else:
             dataloader, dataset = self.train_dataloader, self.train_data
 

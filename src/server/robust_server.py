@@ -72,7 +72,7 @@ class RobustServer(Server):
             stack_solution = torch.stack(chosen_solns)
             averaged_solution = torch.median(stack_solution, dim = 0)[0]
         elif self.aggr == 'krum':
-            f = 5
+            f = int(len(chosen_solns) * self.mali_frac)
             dists = torch.zeros(len(chosen_solns), len(chosen_solns))
             scores = torch.zeros(len(chosen_solns))
             for i in range(len(chosen_solns)):
@@ -85,9 +85,11 @@ class RobustServer(Server):
                 scores[i] = d[:len(chosen_solns) - f - 1].sum()
             averaged_solution = chosen_solns[torch.argmin(scores).item()]
 
+
+        averaged_solution = (1 - self.beta) * self.latest_model + self.beta * averaged_solution
         return averaged_solution.detach()
 
-    def local_test(self, use_eval_data = True):
+    def local_test(self, use_eval_data = 2):
         assert self.latest_model is not None
 
         num_samples = []

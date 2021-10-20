@@ -5,22 +5,18 @@ import torch
 import time
 
 class LpProjClient(Client):
-    def __init__(self, cid, train_data, test_data, options):
+    def __init__(self, cid, train_data, valid_data, test_data, options):
         self.model = choose_model(options)
-        # self.Proj = options['Proj']
         self.lamda = options['lamda']
         self.p = options['p']
         self.gpu = options['gpu'] if 'gpu' in options else False
         self.device = options['device']
-        # if self.gpu:
-        #     self.Proj = self.Proj.to(self.device)
-        # self.optimizer = lp_proj_optimizer(self.model.parameters(), p = self.p, Proj = self.Proj, lr = options['person_lr'], lamda = self.lamda, weight_decay = options['wd'])
         self.optimizer = lp_proj_optimizer(self.model.parameters(), p = self.p, lr = options['person_lr'], lamda = self.lamda, weight_decay = options['wd'])
         self.move_model_to_gpu(self.model, options)
         local_model_dim = options['d']
         self.local_model = torch.zeros(local_model_dim)
 
-        super(LpProjClient, self).__init__(cid, train_data, test_data, options)
+        super(LpProjClient, self).__init__(cid, train_data, valid_data, test_data, options)
 
     def local_train(self, Proj):
         bytes_w = self.local_model_bytes
@@ -28,10 +24,9 @@ class LpProjClient(Client):
 
         for local_round in range(self.num_local_round):
             person_stats = self.person_train(Proj)
-            # proj_person_weight = torch.matmul(self.Proj, self.person_model_params)
             proj_person_weight = torch.matmul(Proj, self.person_model_params)
             conv_weight = self.local_model - proj_person_weight
-            self.local_model = self.local_model - self.local_lr * self.lamda * torch.sign(conv_weight) * (torch.abs(conv_weight) / torch.norm(conv_weight, p = self.p))**(self.p - 1)
+            self.local_model = self.local_model - self.local_lr * self.lamda * torch.sign(conv_weight) * (torch.abs(conv_weight))**(self.p - 1)
 
         end_time = time.time()
         bytes_r = self.local_model_bytes
@@ -41,9 +36,11 @@ class LpProjClient(Client):
 
         return (len(self.train_data), self.local_model), stats
 
-    def local_test(self, Proj, use_eval_data = True):
-        if use_eval_data:
+    def local_test(self, Proj, use_eval_data = 2):
+        if use_eval_data == 2:
             dataloader, dataset = self.test_dataloader, self.test_data
+        elif use_eval_data == 1:
+            dataloader, dataset = self.valid_dataloader, self.valid_data
         else:
             dataloader, dataset = self.train_dataloader, self.train_data
 
@@ -64,7 +61,6 @@ class LpProjClient(Client):
                 test_acc += correct
                 test_total += target_size
 
-        # regularizer = self.lamda * torch.norm(self.local_model - torch.matmul(self.Proj.data, self.person_model_params), p = self.p)
         regularizer = self.lamda * torch.norm(self.local_model - torch.matmul(Proj.data, self.person_model_params), p = self.p)
         test_loss = (test_netloss + regularizer * test_total).item()
         test_dict = {'loss': test_loss, 'netloss': test_netloss,
@@ -72,31 +68,14 @@ class LpProjClient(Client):
 
         return test_dict
 
-    # def get_flat_grads(self, dataloader):
-    #     conv_weight = self.local_model - torch.matmul(self.Proj.data, self.person_model_params)
-    #     flat_grads = self.lamda * torch.sign(conv_weight) * (torch.abs(conv_weight) / torch.norm(conv_weight, p = self.p))**(self.p - 1)
-    #     return flat_grads
-
-    # def get_loss(self, dataloader):
-    #     self.model.eval()
-    #     loss, total_num = 0.0, 0
-    #     for x, y in dataloader:
-    #         if self.gpu:
-    #             x, y = x.cuda(), y.cuda()
-    #         pred = self.model(x)
-    #         loss += self.criterion(pred, y) * y.size(0)
-    #         total_num += y.size(0)
-    #     loss /= total_num
-
-    #     conv_weight = self.local_model - torch.matmul(self.Proj.data, self.person_model_params)
-    #     loss += self.lamda * torch.norm(conv_weight, p = self.p)
-    #     return loss
-
     def person_train(self, Proj):
         self.model.train()
         train_loss = train_netloss = train_acc = train_total = 0.0
         for epoch in range(self.num_epoch):
-            last_train_loss = train_loss
+            if train_total == 0.0:
+                last_train_loss = 0.0
+            else:
+                last_train_loss = train_loss / train_total
             train_loss = train_netloss = train_acc = train_total = 0.0
 
             x, y = self.get_next_train_batch()
@@ -112,7 +91,6 @@ class LpProjClient(Client):
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 60)
             self.optimizer.step(self.local_model, Proj)
             self.person_model_params = self.get_flat_model_params()
-            # conv_weight = self.local_model - torch.matmul(self.Proj.data, self.person_model_params)
             conv_weight = self.local_model - torch.matmul(Proj.data, self.person_model_params)
             regularizer = self.lamda * torch.norm(conv_weight, p = self.p)
 
@@ -122,31 +100,7 @@ class LpProjClient(Client):
             train_netloss = loss.item() * y.size(0)
             train_loss = (loss.item() + regularizer.item()) * y.size(0)
 
-            # for x, y in self.train_dataloader:
-            #     if self.gpu:
-            #         x, y = x.cuda(), y.cuda()
-            #     self.optimizer.zero_grad()
-            #     pred = self.model(x)
-            #     if torch.isnan(pred.max()):
-            #         from IPython import embed
-            #         embed()
-            #     loss = self.criterion(pred, y)
-            #     loss.backward()
-            #     torch.nn.utils.clip_grad_norm(self.model.parameters(), 60)
-            #     self.optimizer.step(self.local_model)
-            #     self.person_model_params = self.get_flat_model_params()
-            #     conv_weight = self.local_model - torch.matmul(self.Proj.data, self.person_model_params)
-            #     regularizer = self.lamda * torch.norm(conv_weight, p = self.p)
-
-            #     _, predicted = torch.max(pred, 1)
-            #     correct = predicted.eq(y).sum().item()
-            #     target_size = y.size(0)
-            #     train_netloss += loss.item() * y.size(0)
-            #     train_loss += (loss.item() + regularizer.item()) * y.size(0)
-            #     train_acc += correct
-            #     train_total += target_size
-            
-            if train_loss - last_train_loss < 1e-20 and epoch > 1:
+            if abs(train_loss / train_total - last_train_loss) < 1e-20 and epoch > 1:
                 break
 
         param_dict = {'norm': torch.norm(self.person_model_params).item(),

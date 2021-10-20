@@ -5,17 +5,18 @@ import torch
 import numpy as np
 
 class Client(object):
-    def __init__(self, cid, train_data, test_data, options):
+    def __init__(self, cid, train_data, valid_data, test_data, options):
         self.cid = cid
         self.train_data = train_data
+        self.valid_data = valid_data
         self.test_data = test_data
         self.train_dataloader = DataLoader(train_data, batch_size = options['batch_size'], shuffle = True)
+        self.valid_dataloader = DataLoader(valid_data, batch_size = options['batch_size'], shuffle = False)
         self.test_dataloader = DataLoader(test_data, batch_size = options['batch_size'], shuffle = False)
         self.iter_trainloader = iter(self.train_dataloader)
         self.iter_testloader = iter(self.test_dataloader)
 
         self.person_model_params = self.get_flat_model_params()
-        # self.local_model_bytes = self.local_model.numel() * self.local_model.element_size()
         self.local_model_bytes = self.local_model.numel()
         
         self.local_lr = options['local_lr']
@@ -57,7 +58,6 @@ class Client(object):
             layer_param_num.append(tmp_num)
         print('>>> layer_param_num = {}'.format(layer_param_num))
         layer_model = torch.split(local_model, layer_param_num)
-        # layer_model = torch.split(local_model, 1)
         layer_norm = []
         for layer in range(len(layer_model)):
             layer_norm.append(round(torch.norm(layer_model[layer]).item(), 3))
@@ -94,31 +94,3 @@ class Client(object):
             self.iter_testloader = iter(self.test_dataloader)
             (x, y) = next(self.iter_testloader)
         return (x, y)
-
-    # def local_train(self):
-    #     raise NotImplementedError
-
-    # def local_test(self, use_eval_data = True):
-    #     raise NotImplementedError
-
-    # def get_flat_grads(self, dataloader):
-    #     raise NotImplementedError
-
-    # def get_loss(self, dataloader):
-    #     raise NotImplementedError
-
-    # def solve_grad(self):
-    #     bytes_w = self.local_model_bytes
-    #     bytes_r = self.local_model_bytes
-    #     train_loss = self.get_loss(self.train_dataloader)
-    #     test_loss = self.get_loss(self.test_dataloader)
-
-    #     stats = {'id': self.cid, 'bytes_w': bytes_w,
-    #     'bytes_r': bytes_r,
-    #     'train_loss': train_loss, 'test_loss': test_loss}
-
-    #     grads = self.get_flat_grads(self.train_dataloader)
-    #     grads_np = grads.cpu().detach().numpy()
-
-    #     return (len(self.train_data), grads_np), stats
-

@@ -37,14 +37,12 @@ class OneHiddenLayerFc(nn.Module):
         super(OneHiddenLayerFc, self).__init__()
         self.fc1 = nn.Linear(input_shape, mid_dim)
         self.fc2 = nn.Linear(mid_dim, out_dim)
-        # self.fc1 = nn.Linear(input_shape, out_dim)
 
         self.weight_keys = [['fc1.weight', 'fc1.bias'],
                             ['fc2.weight', 'fc2.bias']]
 
     def forward(self, x):
         out = F.relu(self.fc1(x))
-        # out = self.fc1(x)
         out = self.fc2(out)
         return out
 
@@ -77,10 +75,6 @@ class CifarNet(nn.Module):
 class VGG16(nn.Module):
     def __init__(self, num_features, num_classes):
         super(VGG16, self).__init__()
-        
-        # calculate same padding:
-        # (w - k + 2*p)/s + 1 = o
-        # => p = (s(o-1) - w + k)/2
         
         self.block_1 = nn.Sequential(
                 nn.Conv2d(in_channels=3,
@@ -216,8 +210,6 @@ class VGG16(nn.Module):
         
         for m in self.modules():
             if isinstance(m, torch.nn.Conv2d):
-                #n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                #m.weight.data.normal_(0, np.sqrt(2. / n))
                 m.weight.detach().normal_(0, 0.05)
                 if m.bias is not None:
                     m.bias.detach().zero_()
@@ -317,8 +309,6 @@ class CelebaNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, torch.nn.Conv2d):
-                #n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                #m.weight.data.normal_(0, np.sqrt(2. / n))
                 m.weight.detach().normal_(0, 0.05)
                 if m.bias is not None:
                     m.bias.detach().zero_()

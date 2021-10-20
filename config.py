@@ -2,13 +2,9 @@
 DATASETS = ['mnist', 'synthetic', 'emnist', 'fashionmnist', 'cifar', 'celeba']
 MODELS = ['logistic', '2nn', '1nn', 'cifar', 'vgg', 'celebacnn']
 ALGORITHMS = {'me': 'MeClient', 
-                'me_fair': 'MeFairClient',
-                'proj': 'ProjClient',
-                'proj_fair': 'ProjFairClient',
                 'ditto': 'DittoClient',
                 'lp': 'LpClient',
                 'lp_proj': 'LpProjClient',
-                'me_fair2': 'MeFair2Client',
                 'sketch': 'SketchClient',
                 'lg': 'LgClient',
                 'fedavg': 'FedAvgClient',

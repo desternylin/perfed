@@ -22,7 +22,7 @@ class ServerLocal(object):
         self.print_result = not options['noprint']
 
     def setup_clients(self, dataset, options):
-        users, train_data, test_data = dataset
+        users, train_data, valid_data, test_data = dataset
 
         all_clients = []
         for user in users:
@@ -31,7 +31,7 @@ class ServerLocal(object):
             else:
                 user_id = int(user)
             self.all_train_data_num += len(train_data[user])
-            c = LocalClient(user_id, train_data[user], test_data[user], options)
+            c = LocalClient(user_id, train_data[user], valid_data[user], test_data[user], options)
             all_clients.append(c)
 
         return all_clients
@@ -42,6 +42,7 @@ class ServerLocal(object):
 
             # Test latest model on train and eval data
             self.test_latest_model_on_train_data(round_i)
+            self.test_latest_model_on_valid_data(round_i)
             self.test_latest_model_on_eval_data(round_i)
 
             # Do local update for all clients
@@ -69,6 +70,7 @@ class ServerLocal(object):
 
         # Test final model on train data
         self.test_latest_model_on_train_data(self.num_round)
+        self.test_latest_model_on_valid_data(self.num_round)
         self.test_latest_model_on_eval_data(self.num_round)
 
         # Save tracked information
@@ -77,7 +79,7 @@ class ServerLocal(object):
     def test_latest_model_on_train_data(self, round_i):
         # Collect stats from total train data
         begin_time = time.time()
-        stats_from_train_data = self.local_test(use_eval_data = False)
+        stats_from_train_data = self.local_test(use_eval_data = 0)
         acc = sum(stats_from_train_data['acc']) / sum(stats_from_train_data['num_samples'])
         loss = sum(stats_from_train_data['loss']) / sum(stats_from_train_data['num_samples'])
         end_time = time.time()
@@ -90,10 +92,18 @@ class ServerLocal(object):
                 ))
             print('=' * 102 + "\n")
 
+    def test_latest_model_on_valid_data(self, round_i):
+        # Collect stats from total valid data
+        stats_from_valid_data = self.local_test(use_eval_data = 1)
+        acc = sum(stats_from_valid_data['acc']) / sum(stats_from_valid_data['num_samples'])
+        loss = sum(stats_from_valid_data['loss']) / sum(stats_from_valid_data['num_samples'])
+
+        self.metrics.update_valid_stats(round_i, stats_from_valid_data)
+
     def test_latest_model_on_eval_data(self, round_i):
         # Collect stats from total eval data
         begin_time = time.time()
-        stats_from_eval_data = self.local_test(use_eval_data = True)
+        stats_from_eval_data = self.local_test(use_eval_data = 2)
         acc = sum(stats_from_eval_data['acc']) / sum(stats_from_eval_data['num_samples'])
         loss = sum(stats_from_eval_data['loss']) / sum(stats_from_eval_data['num_samples'])
         end_time = time.time()
@@ -105,7 +115,7 @@ class ServerLocal(object):
 
         self.metrics.update_eval_stats(round_i, stats_from_eval_data)
 
-    def local_test(self, use_eval_data = True):
+    def local_test(self, use_eval_data = 2):
         num_samples = []
         accs = []
         losses = []

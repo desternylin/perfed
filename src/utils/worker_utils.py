@@ -19,7 +19,7 @@ def mkdir(path):
     return path
 
 
-def read_data(train_data_dir, test_data_dir, key=None):
+def read_data(train_data_dir, valid_data_dir, test_data_dir, key=None):
     """Parses data in given train and test data directories
 
     Assumes:
@@ -34,6 +34,7 @@ def read_data(train_data_dir, test_data_dir, key=None):
 
     clients = []
     train_data = {}
+    valid_data = {}
     test_data = {}
     print('>>> Read data from:')
 
@@ -53,8 +54,23 @@ def read_data(train_data_dir, test_data_dir, key=None):
 
     for cid, v in train_data.items():
         train_x = np.array(v['x'])
-        # print('data.shape = {}'.format(train_x.shape))
         train_data[cid] = MiniDataset(v['x'], v['y'])
+
+    valid_files = os.listdir(valid_data_dir)
+    valid_files = [f for f in valid_files if f.endswith('.pkl')]
+    if key is not None:
+        valid_files = list(filter(lambda x: str(key) in x, valid_files))
+    
+    for f in valid_files:
+        file_path = os.path.join(valid_data_dir, f)
+        print('    ', file_path)
+
+        with open(file_path, 'rb') as inf:
+            cdata = pickle.load(inf)
+        valid_data.update(cdata['user_data'])
+        
+    for cid, v in valid_data.items():
+        valid_data[cid] = MiniDataset(v['x'], v['y'])
 
     test_files = os.listdir(test_data_dir)
     test_files = [f for f in test_files if f.endswith('.pkl')]
@@ -74,7 +90,7 @@ def read_data(train_data_dir, test_data_dir, key=None):
 
     clients = list(sorted(train_data.keys()))
 
-    return clients, train_data, test_data
+    return clients, train_data, valid_data, test_data
 
 class MiniDataset(Dataset):
     def __init__(self, data, labels):
@@ -140,7 +156,6 @@ class Metrics(object):
         self.options = options
         num_rounds = options['num_round'] + 1
         self.bytes_written = {c.cid: [0] * num_rounds for c in clients}
-        # self.client_computations = {c.cid: [0] * num_rounds for c in clients}
         self.bytes_read = {c.cid: [0] * num_rounds for c in clients}
         self.local_bytes_written = {c.cid: [0] * num_rounds for c in clients}
         self.local_bytes_read = {c.cid: [0] * num_rounds for c in clients}
@@ -149,14 +164,23 @@ class Metrics(object):
         self.loss_on_train_data = [0] * num_rounds
         self.netloss_on_train_data = [0] * num_rounds
         self.acc_on_train_data = [0] * num_rounds
-        # self.gradnorm_on_train_data = [0] * num_rounds
-        # self.graddiff_on_train_data = [0] * num_rounds
         self.global_loss_on_train_data = [0] * num_rounds
         self.global_netloss_on_train_data = [0] * num_rounds
         self.global_acc_on_train_data = [0] * num_rounds
         self.loss_var_on_train_data = [0] * num_rounds
         self.netloss_var_on_train_data = [0] * num_rounds
         self.acc_var_on_train_data = [0] * num_rounds
+
+        # Statistics in valid procedure
+        self.loss_on_valid_data = [0] * num_rounds
+        self.netloss_on_valid_data = [0] * num_rounds
+        self.acc_on_valid_data = [0] * num_rounds
+        self.global_loss_on_valid_data = [0] * num_rounds
+        self.global_netloss_on_valid_data = [0] * num_rounds
+        self.global_acc_on_valid_data = [0] * num_rounds
+        self.loss_var_on_valid_data = [0] * num_rounds
+        self.netloss_var_on_valid_data = [0] * num_rounds
+        self.acc_var_on_valid_data = [0] * num_rounds
 
         # Statistics in test procedure
         self.loss_on_eval_data = [0] * num_rounds
@@ -170,7 +194,7 @@ class Metrics(object):
         self.acc_var_on_eval_data = [0] * num_rounds
 
         self.result_path = mkdir(os.path.join('./result', self.options['dataset']))
-        suffix = '{}_sd{}_lr{}_plr{}_lam{}_intd{}_c{}_r{}_k{}_lay{}_s{}_mfr{}_atk{}_agr{}'.format(name,
+        suffix = '{}_sd{}_lr{}_plr{}_lam{}_intd{}_c{}_r{}_k{}_lay{}_s{}_mfr{}_atk{}_agr{}_locr{}_beta{}'.format(name,
                                                     options['seed'],
                                                     options['local_lr'],
                                                     options['person_lr'],
@@ -183,7 +207,9 @@ class Metrics(object):
                                                     options['server'],
                                                     options['mali_frac'],
                                                     options['attack'],
-                                                    options['aggr'])
+                                                    options['aggr'],
+                                                    options['num_local_round'],
+                                                    options['beta'])
 
         self.exp_name = '{}_{}_{}_{}'.format(time.strftime('%Y-%m-%dT%H-%M-%S'), options['algo'],
                                              options['model'], suffix)
@@ -191,21 +217,18 @@ class Metrics(object):
             suffix = options['dis']
             self.exp_name += '_{}'.format(suffix)
         train_event_folder = mkdir(os.path.join(self.result_path, self.exp_name, 'train.event'))
+        valid_event_folder = mkdir(os.path.join(self.result_path, self.exp_name, 'valid.event'))
         eval_event_folder = mkdir(os.path.join(self.result_path, self.exp_name, 'eval.event'))
         self.train_writer = SummaryWriter(train_event_folder)
+        self.valid_writer = SummaryWriter(valid_event_folder)
         self.eval_writer = SummaryWriter(eval_event_folder)
 
     def update_commu_stats(self, round_i, stats):
-        # cid, bytes_w, comp, bytes_r, local_bytes_w, local_bytes_r = \
-        #     stats['id'], stats['bytes_w'], stats['comp'], stats['bytes_r'], stats['local_bytes_w'], stats['local_bytes_r']
         cid, bytes_w, bytes_r, = \
-            stats['id'], stats['bytes_w'], stats['bytes_r']
+        stats['id'], stats['bytes_w'], stats['bytes_r']
 
         self.bytes_written[cid][round_i] += bytes_w
-        # self.client_computations[cid][round_i] += comp
         self.bytes_read[cid][round_i] += bytes_r
-        # self.local_bytes_written[cid][round_i] += local_bytes_w
-        # self.local_bytes_read[cid][round_i] += local_bytes_r
 
     def extend_commu_stats(self, round_i, stats_list):
         for stats in stats_list:
@@ -215,8 +238,6 @@ class Metrics(object):
         self.loss_on_train_data[round_i] = train_stats['loss']
         self.netloss_on_train_data[round_i] = train_stats['netloss']
         self.acc_on_train_data[round_i] = train_stats['acc']
-        # self.gradnorm_on_train_data[round_i] = train_stats['gradnorm']
-        # self.graddiff_on_train_data[round_i] = train_stats['graddiff']
 
         num_samples = train_stats['num_samples']
         self.global_loss_on_train_data[round_i] = sum(train_stats['loss']) / sum(num_samples)
@@ -230,11 +251,30 @@ class Metrics(object):
         self.train_writer.add_scalar('train_loss', self.global_loss_on_train_data[round_i], round_i)
         self.train_writer.add_scalar('train_netloss', self.global_netloss_on_train_data[round_i], round_i)
         self.train_writer.add_scalar('train_acc', self.global_acc_on_train_data[round_i], round_i)
-        # self.train_writer.add_scalar('gradnorm', train_stats['gradnorm'], round_i)
-        # self.train_writer.add_scalar('graddiff', train_stats['graddiff'], round_i)
         self.train_writer.add_scalar('train_loss_var', self.loss_var_on_train_data[round_i], round_i)
         self.train_writer.add_scalar('train_netloss_var', self.netloss_var_on_train_data[round_i], round_i)
         self.train_writer.add_scalar('train_acc_var', self.acc_var_on_train_data[round_i], round_i)
+
+    def update_valid_stats(self, round_i, valid_stats):
+        self.loss_on_valid_data[round_i] = valid_stats['loss']
+        self.netloss_on_valid_data[round_i] = valid_stats['netloss']
+        self.acc_on_valid_data[round_i] = valid_stats['acc']
+
+        num_samples = valid_stats['num_samples']
+        self.global_loss_on_valid_data[round_i] = sum(valid_stats['loss']) / sum(num_samples)
+        self.global_netloss_on_valid_data[round_i] = sum(valid_stats['netloss']) / sum(num_samples)
+        self.global_acc_on_valid_data[round_i] = sum(valid_stats['acc']) / sum(num_samples)
+
+        self.loss_var_on_valid_data[round_i] = np.var(np.array(valid_stats['loss']) / np.array(num_samples))
+        self.netloss_var_on_valid_data[round_i] = np.var(np.array(valid_stats['netloss']) / np.array(num_samples))
+        self.acc_var_on_valid_data[round_i] = np.var(np.array(valid_stats['acc']) / np.array(num_samples))
+
+        self.valid_writer.add_scalar('valid_loss', self.global_loss_on_valid_data[round_i], round_i)
+        self.valid_writer.add_scalar('valid_netloss', self.global_netloss_on_valid_data[round_i], round_i)
+        self.valid_writer.add_scalar('valid_acc', self.global_acc_on_valid_data[round_i], round_i)
+        self.valid_writer.add_scalar('valid_loss_var', self.loss_var_on_valid_data[round_i], round_i)
+        self.valid_writer.add_scalar('valid_netloss_var', self.netloss_var_on_valid_data[round_i], round_i)
+        self.valid_writer.add_scalar('valid_acc_var', self.acc_var_on_valid_data[round_i], round_i)
 
     def update_eval_stats(self, round_i, eval_stats):
         self.loss_on_eval_data[round_i] = eval_stats['loss']
@@ -274,14 +314,22 @@ class Metrics(object):
         metrics['loss_on_train_data'] = self.loss_on_train_data
         metrics['netloss_on_train_data'] = self.netloss_on_train_data
         metrics['acc_on_train_data'] = self.acc_on_train_data
-        # metrics['gradnorm_on_train_data'] = self.gradnorm_on_train_data
-        # metrics['graddiff_on_train_data'] = self.graddiff_on_train_data
         metrics['global_loss_on_train_data'] = self.global_loss_on_train_data
         metrics['global_netloss_on_train_data'] = self.global_netloss_on_train_data
         metrics['global_acc_on_train_data'] = self.global_acc_on_train_data
         metrics['loss_var_on_train_data'] = self.loss_var_on_train_data
         metrics['netloss_var_on_train_data'] = self.netloss_var_on_train_data
         metrics['acc_var_on_train_data'] = self.acc_var_on_train_data
+
+        metrics['loss_on_valid_data'] = self.loss_on_valid_data
+        metrics['netloss_on_valid_data'] = self.netloss_on_valid_data
+        metrics['acc_on_valid_data'] = self.acc_on_valid_data
+        metrics['global_loss_on_valid_data'] = self.global_loss_on_valid_data
+        metrics['global_netloss_on_valid_data'] = self.global_netloss_on_valid_data
+        metrics['global_acc_on_valid_data'] = self.global_acc_on_valid_data
+        metrics['loss_var_on_valid_data'] = self.loss_var_on_valid_data
+        metrics['netloss_var_on_valid_data'] = self.netloss_var_on_valid_data
+        metrics['acc_var_on_valid_data'] = self.acc_var_on_valid_data
 
         metrics['loss_on_eval_data'] = self.loss_on_eval_data
         metrics['netloss_on_eval_data'] = self.netloss_on_eval_data
@@ -293,12 +341,8 @@ class Metrics(object):
         metrics['netloss_var_on_eval_data'] = self.netloss_var_on_eval_data
         metrics['acc_var_on_eval_data'] = self.acc_var_on_eval_data
 
-        # Dict(key=cid, value=list(stats for each round))
-        # metrics['client_computations'] = self.client_computations
         metrics['bytes_written'] = self.bytes_written
         metrics['bytes_read'] = self.bytes_read
-        # metrics['local_bytes_written'] = self.local_bytes_written
-        # metrics['local_bytes_read'] = self.local_bytes_read
 
         metrics_dir = os.path.join(self.result_path, self.exp_name, 'metrics.json')
 

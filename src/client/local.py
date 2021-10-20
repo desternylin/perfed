@@ -8,11 +8,13 @@ import torch.nn as nn
 import numpy as np
 
 class LocalClient(Client):
-    def __init__(self, cid, train_data, test_data, options):
+    def __init__(self, cid, train_data, valid_data, test_data, options):
         self.cid = cid
         self.train_data = train_data
+        self.valid_data = valid_data
         self.test_data = test_data
         self.train_dataloader = DataLoader(train_data, batch_size = options['batch_size'], shuffle = True)
+        self.valid_dataloader = DataLoader(valid_data, batch_size = options['batch_size'], shuffle = False)
         self.test_dataloader = DataLoader(test_data, batch_size = options['batch_size'], shuffle = False)
         self.iter_trainloader = iter(self.train_dataloader)
         self.iter_testloader = iter(self.test_dataloader)
@@ -67,9 +69,11 @@ class LocalClient(Client):
 
         return self.local_model, stats
 
-    def local_test(self, use_eval_data = True):
-        if use_eval_data:
+    def local_test(self, use_eval_data = 2):
+        if use_eval_data == 2:
             dataloader, dataset = self.test_dataloader, self.test_data
+        elif use_eval_data == 1:
+            dataloader, dataset = self.valid_dataloader, self.valid_data
         else:
             dataloader, dataset = self.train_dataloader, self.train_data
 

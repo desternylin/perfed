@@ -163,6 +163,10 @@ def read_options():
                         help = 'number of layers to use for the global model',
                         type = int,
                         default = 0)
+    parser.add_argument('--beta',
+                        help = 'parameter to control the aggregation',
+                        type = float,
+                        default = 1)
 
     parsed = parser.parse_args()
     options = parsed.__dict__
@@ -194,7 +198,7 @@ def read_options():
         print(fmt_string % keyPair)
 
     # If using projection, setup the projection matrix
-    proj_algo = ['proj', 'proj_fair', 'lp_proj']
+    proj_algo = ['lp_proj']
     tmp_model = choose_model(options)
     person_model_dim = sum(p.numel() for p in tmp_model.parameters())
     print('Total number of parameters is {}'.format(person_model_dim))
@@ -218,10 +222,11 @@ def main():
     options, server_class, dataset_name, sub_data = read_options()
 
     train_path = os.path.join('./data', dataset_name, 'data', 'train')
+    valid_path = os.path.join('./data', dataset_name, 'data', 'valid')
     test_path = os.path.join('./data', dataset_name, 'data', 'test')
 
-    # `dataset` is a tuple like (cids, train_data, test_data)
-    all_data_info = read_data(train_path, test_path, sub_data)
+    # `dataset` is a tuple like (cids, train_data, valid_data, test_data)
+    all_data_info = read_data(train_path, valid_path, test_path, sub_data)
 
     # Call appropriate server
     selected_server = server_class(all_data_info, options)

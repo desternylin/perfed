@@ -74,11 +74,16 @@ def generate_for_task(alpha, beta, iid, balance):
     print('\n')
     print('>>> Generate data for {}'.format(dataset_name))
     train_path = "data/train/{}.pkl".format(dataset_name)
+    valid_path = "data/valid/{}.pkl".format(dataset_name)
     test_path = "data/test/{}.pkl".format(dataset_name)
     # train_path = "{}/data/train/{}.pkl".format(cpath, dataset_name)
     # test_path = "{}/data/test/{}.pkl".format(cpath, dataset_name)
 
     dir_path = os.path.dirname(train_path)
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+
+    dir_path = os.path.dirname(valid_path)
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
 
@@ -90,6 +95,7 @@ def generate_for_task(alpha, beta, iid, balance):
 
     # Create data structure
     train_data = {'users': [], 'user_data': {}, 'num_samples': []}
+    valid_data = {'users': [], 'user_data': {}, 'num_samples': []}
     test_data = {'users': [], 'user_data': {}, 'num_samples': []}
 
     for i in range(NUM_USER):
@@ -98,19 +104,26 @@ def generate_for_task(alpha, beta, iid, balance):
         random.shuffle(combined)
         X[i][:], y[i][:] = zip(*combined)
         num_samples = len(X[i])
-        train_len = int(0.9 * num_samples)
+        train_len = int(0.8 * num_samples)
         test_len = num_samples - train_len
+        valid_len = int(0.2 * train_len)
+        train_len = train_len - valid_len
 
         train_data['users'].append(uname)
         train_data['user_data'][uname] = {'x': X[i][:train_len], 'y':y[i][:train_len]}
         train_data['num_samples'].append(train_len)
+        valid_data['users'].append(uname)
+        valid_data['user_data'][uname] = {'x': X[i][train_len:(train_len + valid_len)], 'y': y[i][train_len:(train_len + valid_len)]}
+        valid_data['num_samples'].append(valid_len)
         test_data['users'].append(uname)
-        test_data['user_data'][uname] = {'x': X[i][train_len:], 'y': y[i][train_len:]}
+        test_data['user_data'][uname] = {'x': X[i][(train_len + valid_len):], 'y': y[i][(train_len + valid_len):]}
         test_data['num_samples'].append(test_len)
 
     if SAVE:
         with open(train_path, 'wb') as outfile:
             pickle.dump(train_data, outfile, pickle.HIGHEST_PROTOCOL)
+        with open(valid_path, 'wb') as outfile:
+            pickle.dump(valid_data, outfile, pickle.HIGHEST_PROTOCOL)
         with open(test_path, 'wb') as outfile:
             pickle.dump(test_data, outfile, pickle.HIGHEST_PROTOCOL)
 

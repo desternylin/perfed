@@ -119,6 +119,8 @@ def generate_for_task(equal = True):
     # Assign samples to each user
     train_X = [[] for _ in range(NUM_USER)]
     train_y = [[] for _ in range(NUM_USER)]
+    valid_X = [[] for _ in range(NUM_USER)]
+    valid_y = [[] for _ in range(NUM_USER)]
     test_X = [[] for _ in range(NUM_USER)]
     test_y = [[] for _ in range(NUM_USER)]
 
@@ -130,8 +132,15 @@ def generate_for_task(equal = True):
 
         for d in choose_two_digit(split_mnist_traindata):
             l = len(split_mnist_traindata[d][-1])
-            train_X[user] += split_mnist_traindata[d].pop().tolist()
-            train_y[user] += (d * np.ones(l)).tolist()
+            X = split_mnist_traindata[d].pop().tolist()
+            valid_len = int(0.2 * l)
+            train_len = l - valid_len
+            # train_X[user] += split_mnist_traindata[d].pop().tolist()
+            # train_y[user] += (d * np.ones(l)).tolist()
+            train_X[user] += X[:train_len]
+            train_y[user] += (d * np.ones(train_len)).tolist()
+            valid_X[user] += X[train_len:]
+            valid_y[user] += (d * np.ones(valid_len)).tolist()
 
             l = len(split_mnist_testdata[d][-1])
             test_X[user] += split_mnist_testdata[d].pop().tolist()
@@ -141,11 +150,16 @@ def generate_for_task(equal = True):
     print('>>> Set data path for MNIST')
     image = 1 if IMAGE_DATA else 0
     train_path = "data/train/all_data_{}_{}_niid.pkl".format(image, 'equal' if equal else 'random')
+    valid_path = "data/valid/all_data_{}_{}_niid.pkl".format(image, 'equal' if equal else 'random')
     test_path = "data/test/all_data_{}_{}_niid.pkl".format(image, 'equal' if equal else 'random')
     # train_path = "{}/data/train/all_data_{}_{}_niid.pkl".format(cpath, image, 'equal' if equal else 'random')
     # test_path = "{}/data/test/all_data_{}_{}_niid.pkl".format(cpath, image, 'equal' if equal else 'random')
 
     dir_path = os.path.dirname(train_path)
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+    
+    dir_path = os.path.dirname(valid_path)
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
     
@@ -155,6 +169,7 @@ def generate_for_task(equal = True):
 
     # Create data structure
     train_data = {'users': [], 'user_data': {}, 'num_samples': []}
+    valid_data = {'users': [], 'user_data': {}, 'num_samples': []}
     test_data = {'users': [], 'user_data': {}, 'num_samples': []}
 
     # Setup users
@@ -164,6 +179,10 @@ def generate_for_task(equal = True):
         train_data['users'].append(uname)
         train_data['user_data'][uname] = {'x': train_X[i], 'y': train_y[i]}
         train_data['num_samples'].append(len(train_X[i]))
+
+        valid_data['users'].append(uname)
+        valid_data['user_data'][uname] = {'x': valid_X[i], 'y': valid_y[i]}
+        valid_data['num_samples'].append(len(valid_X[i]))
 
         test_data['users'].append(uname)
         test_data['user_data'][uname] = {'x': test_X[i], 'y': test_y[i]}
@@ -177,6 +196,8 @@ def generate_for_task(equal = True):
     if SAVE: 
         with open(train_path, 'wb') as outfile:
             pickle.dump(train_data, outfile, pickle.HIGHEST_PROTOCOL)
+        with open(valid_path, 'wb') as outfile:
+            pickle.dump(valid_data, outfile, pickle.HIGHEST_PROTOCOL)
         with open(test_path, 'wb') as outfile:
             pickle.dump(test_data, outfile, pickle.HIGHEST_PROTOCOL)
 
