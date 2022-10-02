@@ -4,7 +4,7 @@ import importlib
 import torch
 import os
 
-from src.utils.worker_utils import read_data
+from src.utils.worker_utils import read_data, gram_schmidt
 from config import OPTIMIZERS, DATASETS, MODELS, MODEL_PARAMS, ALGORITHMS, CRITERIA, ATTACKS, SERVERS, SERVERTYPE, AGGR
 from src.server.server import Server
 from src.model.model import choose_model
@@ -148,7 +148,7 @@ def read_options():
                         type = float,
                         default = 10)
     parser.add_argument('--momentum',
-                        help = 'momentum when doing update in sketched-sgd',
+                        help = 'momentum when doing update in sketched-sgd and dgc',
                         type = float,
                         default = 0.9)
     parser.add_argument('--sketchbiases',
@@ -167,6 +167,30 @@ def read_options():
                         help = 'parameter to control the aggregation',
                         type = float,
                         default = 1)
+    parser.add_argument('--orthogonalize',
+                        help = 'whether to orthogonalize the projection matrix',
+                        default = False,
+                        action = 'store_true')
+    parser.add_argument('--delta_thre',
+                        help = 'look-back phase error threshold',
+                        type = float,
+                        default = 0.2)
+    parser.add_argument('--num_q_level',
+                        help = 'number of quantization levels',
+                        type = int,
+                        default = 5)
+    parser.add_argument('--bucket_size',
+                        help = 'bucket size for gradient quantization',
+                        type = int,
+                        default = 5)
+    parser.add_argument('--sparse_level',
+                        help = 'initial sparse level for dgc',
+                        type = float,
+                        default = 0.75)
+    parser.add_argument('--rising_level',
+                        help = 'rising level for dgc during warm-up training',
+                        type = float, 
+                        default = 0.25)
 
     parsed = parser.parse_args()
     options = parsed.__dict__
@@ -198,13 +222,15 @@ def read_options():
         print(fmt_string % keyPair)
 
     # If using projection, setup the projection matrix
-    proj_algo = ['lp_proj']
+    proj_algo = ['proj', 'proj_fair', 'lp_proj', 'lp_projnew', 'lp_projdiff']
     tmp_model = choose_model(options)
     person_model_dim = sum(p.numel() for p in tmp_model.parameters())
     print('Total number of parameters is {}'.format(person_model_dim))
     if options['algo'] in proj_algo:
         Proj = torch.normal(mean = 0., std = 1., size = (options['d'], person_model_dim))
         Proj = F.normalize(Proj, p = 2, dim = 1)
+        if options['orthogonalize']:
+            Proj = gram_schmidt(Proj)
         options.update({'Proj': Proj, 'local_model_dim': options['d'], 'person_model_dim': person_model_dim})
     else:
         options.update({'local_model_dim': person_model_dim, 'person_model_dim': person_model_dim})
