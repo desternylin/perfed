@@ -54,6 +54,7 @@ def read_data(train_data_dir, valid_data_dir, test_data_dir, key=None):
 
     for cid, v in train_data.items():
         train_x = np.array(v['x'])
+        print('data.shape = {}'.format(train_x.shape))
         train_data[cid] = MiniDataset(v['x'], v['y'])
 
     valid_files = os.listdir(valid_data_dir)
@@ -170,6 +171,7 @@ class Metrics(object):
         self.loss_var_on_train_data = [0] * num_rounds
         self.netloss_var_on_train_data = [0] * num_rounds
         self.acc_var_on_train_data = [0] * num_rounds
+        self.num_samples_on_train_data = [0] * num_rounds
 
         # Statistics in valid procedure
         self.loss_on_valid_data = [0] * num_rounds
@@ -181,6 +183,7 @@ class Metrics(object):
         self.loss_var_on_valid_data = [0] * num_rounds
         self.netloss_var_on_valid_data = [0] * num_rounds
         self.acc_var_on_valid_data = [0] * num_rounds
+        self.num_samples_on_valid_data = [0] * num_rounds
 
         # Statistics in test procedure
         self.loss_on_eval_data = [0] * num_rounds
@@ -192,9 +195,10 @@ class Metrics(object):
         self.loss_var_on_eval_data = [0] * num_rounds
         self.netloss_var_on_eval_data = [0] * num_rounds
         self.acc_var_on_eval_data = [0] * num_rounds
+        self.num_samples_on_eval_data = [0] * num_rounds
 
         self.result_path = mkdir(os.path.join('./result', self.options['dataset']))
-        suffix = '{}_sd{}_lr{}_plr{}_lam{}_intd{}_c{}_r{}_k{}_lay{}_s{}_mfr{}_atk{}_agr{}_locr{}_beta{}'.format(name,
+        suffix = '{}_sd{}_lr{}_plr{}_lam{}_intd{}_c{}_r{}_k{}_lay{}_s{}_mfr{}_atk{}_agr{}_locr{}_beta{}_delta{}_q{}_buck{}_sp{}_rl{}'.format(name,
                                                     options['seed'],
                                                     options['local_lr'],
                                                     options['person_lr'],
@@ -209,7 +213,12 @@ class Metrics(object):
                                                     options['attack'],
                                                     options['aggr'],
                                                     options['num_local_round'],
-                                                    options['beta'])
+                                                    options['beta'],
+													options['delta_thre'],
+                                                    options['num_q_level'],
+                                                    options['bucket_size'],
+                                                    options['sparse_level'],
+                                                    options['rising_level'])
 
         self.exp_name = '{}_{}_{}_{}'.format(time.strftime('%Y-%m-%dT%H-%M-%S'), options['algo'],
                                              options['model'], suffix)
@@ -225,7 +234,7 @@ class Metrics(object):
 
     def update_commu_stats(self, round_i, stats):
         cid, bytes_w, bytes_r, = \
-        stats['id'], stats['bytes_w'], stats['bytes_r']
+            stats['id'], stats['bytes_w'], stats['bytes_r']
 
         self.bytes_written[cid][round_i] += bytes_w
         self.bytes_read[cid][round_i] += bytes_r
@@ -239,6 +248,7 @@ class Metrics(object):
         self.netloss_on_train_data[round_i] = train_stats['netloss']
         self.acc_on_train_data[round_i] = train_stats['acc']
 
+        self.num_samples_on_train_data[round_i] = train_stats['num_samples']
         num_samples = train_stats['num_samples']
         self.global_loss_on_train_data[round_i] = sum(train_stats['loss']) / sum(num_samples)
         self.global_netloss_on_train_data[round_i] = sum(train_stats['netloss']) / sum(num_samples)
@@ -260,6 +270,7 @@ class Metrics(object):
         self.netloss_on_valid_data[round_i] = valid_stats['netloss']
         self.acc_on_valid_data[round_i] = valid_stats['acc']
 
+        self.num_samples_on_valid_data[round_i] = valid_stats['num_samples']
         num_samples = valid_stats['num_samples']
         self.global_loss_on_valid_data[round_i] = sum(valid_stats['loss']) / sum(num_samples)
         self.global_netloss_on_valid_data[round_i] = sum(valid_stats['netloss']) / sum(num_samples)
@@ -281,6 +292,7 @@ class Metrics(object):
         self.netloss_on_eval_data[round_i] = eval_stats['netloss']
         self.acc_on_eval_data[round_i] = eval_stats['acc']
 
+        self.num_samples_on_eval_data[round_i] = eval_stats['num_samples']
         num_samples = eval_stats['num_samples']
         self.global_loss_on_eval_data[round_i] = sum(eval_stats['loss']) / sum(num_samples)
         self.global_netloss_on_eval_data[round_i] = sum(eval_stats['netloss']) / sum(num_samples)
@@ -320,6 +332,7 @@ class Metrics(object):
         metrics['loss_var_on_train_data'] = self.loss_var_on_train_data
         metrics['netloss_var_on_train_data'] = self.netloss_var_on_train_data
         metrics['acc_var_on_train_data'] = self.acc_var_on_train_data
+        metrics['num_samples_on_train_data'] = self.num_samples_on_train_data
 
         metrics['loss_on_valid_data'] = self.loss_on_valid_data
         metrics['netloss_on_valid_data'] = self.netloss_on_valid_data
@@ -330,6 +343,7 @@ class Metrics(object):
         metrics['loss_var_on_valid_data'] = self.loss_var_on_valid_data
         metrics['netloss_var_on_valid_data'] = self.netloss_var_on_valid_data
         metrics['acc_var_on_valid_data'] = self.acc_var_on_valid_data
+        metrics['num_samples_on_valid_data'] = self.num_samples_on_valid_data
 
         metrics['loss_on_eval_data'] = self.loss_on_eval_data
         metrics['netloss_on_eval_data'] = self.netloss_on_eval_data
@@ -340,6 +354,7 @@ class Metrics(object):
         metrics['loss_var_on_eval_data'] = self.loss_var_on_eval_data
         metrics['netloss_var_on_eval_data'] = self.netloss_var_on_eval_data
         metrics['acc_var_on_eval_data'] = self.acc_var_on_eval_data
+        metrics['num_samples_on_eval_data'] = self.num_samples_on_eval_data
 
         metrics['bytes_written'] = self.bytes_written
         metrics['bytes_read'] = self.bytes_read
@@ -357,3 +372,22 @@ def topk(vec, k):
 
     ret[topkIndices] = vec[topkIndices]
     return ret
+
+def gram_schmidt(vv):
+    def projection(u, v):
+        return (v * u).sum() / (u * u).sum() * u
+
+    nk = vv.size(0)
+    uu = torch.zeros_like(vv, device=vv.device)
+    uu[0, :] = vv[0, :].clone()
+    for k in range(1, nk):
+        vk = vv[k].clone()
+        uk = 0
+        for j in range(0, k):
+            uj = uu[j, :].clone()
+            uk = uk + projection(uj, vk)
+        uu[k, :] = vk - uk
+    for k in range(nk):
+        uk = uu[k, :].clone()
+        uu[k, :] = uk / uk.norm()
+    return uu

@@ -18,6 +18,15 @@ class RobustServer(Server):
         self.mali_clients = [self.all_clients_id[i] for i in np.random.choice(len(self.all_clients_id), round(len(self.all_clients_id) * self.mali_frac), replace = False)]
         self.benign_clients = list(filter(lambda i: i not in self.mali_clients, self.all_clients_id))
 
+        if self.attack == 'data_poison':
+            for mali_id in self.mali_clients:
+                if 'emnist' in options['dataset']:
+                    y_range = 62
+                else:
+                    y_range = 10
+                c = self.clients[mali_id]
+                self.clients[mali_id].train_data.labels = np.random.randint(0, y_range, len(c.train_data.labels))
+
     def get_all_clients_id(self):
         clients_id = []
         for c in self.clients:
@@ -47,11 +56,14 @@ class RobustServer(Server):
                 if self.attack == 'same_value':
                     local_soln = torch.ones_like(self.latest_model) * np.random.normal(0, 100, 1).item()
                 elif self.attack == 'sign_flip':
-                    local_soln = - local_soln
+                    magnitude = abs(np.random.normal(0, 10, 1).item())
+                    local_soln = - magnitude * local_soln
                 elif self.attack == 'gaussian':
                     local_soln = torch.normal(mean = 0., std = 100., size = local_soln.size())
                     if self.gpu:
                         local_soln = local_soln.to(self.device)
+                elif self.attack == 'data_poison':
+                    local_soln = local_soln * np.random.normal(0, 20, 1).item()
             chosen_solns.append(local_soln)
             num_samples.append(num_sample)
 

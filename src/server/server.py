@@ -32,7 +32,7 @@ class Server(object):
         self.aggr = options['aggr']
         self.algo = options['algo']
 
-        proj_algo = ['proj', 'lp_proj', 'proj_fair']
+        proj_algo = ['proj', 'lp_proj', 'proj_fair', 'lp_projnew', 'lp_projdiff']
         if self.algo in proj_algo:
             self.Proj = options['Proj']
             if self.gpu:
@@ -85,7 +85,7 @@ class Server(object):
             self.test_latest_model_on_eval_data(round_i)
 
             partial_commu_alg = ['fedavg', 'perfedavg']
-            proj_algo = ['proj', 'lp_proj', 'proj_fair']
+            proj_algo = ['proj', 'lp_proj', 'proj_fair', 'lp_projnew', 'lp_projdiff']
             if self.algo not in partial_commu_alg:
                 # Do local update for all clients
                 solns = [] # Buffer for receiving client solutions
@@ -99,9 +99,6 @@ class Server(object):
                         soln, stat = c.local_train(self.Proj)
                     else:
                         soln, stat = c.local_train()
-
-                    # Decay the learning rate for both local optimization problem
-                    # c.inverse_prop_decay_learning_rate(round_i)
 
                     if self.print_result:
                         print('Round: {: >2d} | CID:{: >3d} |'
@@ -140,9 +137,6 @@ class Server(object):
 
                     # Solve local and personal minimization
                     soln, stat = c.local_train()
-
-                    # Decay the learning rate for both local optimization problem
-                    # c.inverse_prop_decay_learning_rate(round_i)
 
                     if self.print_result:
                         print('Round: {: >2d} | CID:{: >3d}({:>2d}/{:>2d})|'
@@ -265,7 +259,7 @@ class Server(object):
         for c in self.clients:
             c.set_local_model_params(self.latest_model)
 
-            proj_algo = ['proj', 'lp_proj', 'proj_fair']
+            proj_algo = ['proj', 'lp_proj', 'proj_fair', 'lp_projnew', 'lp_projdiff']
             if self.algo in proj_algo:
                 test_dict = c.local_test(self.Proj, use_eval_data = use_eval_data)
             else:

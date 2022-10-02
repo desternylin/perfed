@@ -26,7 +26,7 @@ class LpProjClient(Client):
             person_stats = self.person_train(Proj)
             proj_person_weight = torch.matmul(Proj, self.person_model_params)
             conv_weight = self.local_model - proj_person_weight
-            self.local_model = self.local_model - self.local_lr * self.lamda * torch.sign(conv_weight) * (torch.abs(conv_weight))**(self.p - 1)
+            self.local_model = self.local_model - self.local_lr * self.lamda * torch.sign(conv_weight) * (torch.abs(conv_weight) / torch.norm(conv_weight, p = self.p))**(self.p - 1)
 
         end_time = time.time()
         bytes_r = self.local_model_bytes
