@@ -17,6 +17,10 @@ class ServerSketch(object):
         self.model = choose_model(options)
         self.local_lr = options['local_lr']
         self.latest_model = self.get_flat_model_params()
+        # if self.gpu:
+        #     self.device = "cuda"
+        # else:
+        #     self.device = "cpu"
         
         self.num_round = options['num_round']
         self.eval_every = options['eval_every']
@@ -41,6 +45,7 @@ class ServerSketch(object):
                 sketchMask.append(torch.zeros(size))
             D += size
         self.D = D
+        # self.sketchMask = torch.cat(sketchMask).bool().to(self.device)
         self.sketchMask = torch.cat(sketchMask).bool()
         print('D: {}'.format(self.D))
         print('sketchMask.sum(): {}'.format(self.sketchMask.sum()))
@@ -263,6 +268,7 @@ class ServerSketch(object):
         for c in self.clients:
             self.latest_model = self.get_flat_model_params()
             c.set_flat_params_to(self.latest_model)
+            c.set_local_model_params(self.latest_model)
             test_dict = c.local_test(use_eval_data = use_eval_data)
             num_sample = test_dict['test_num']
             acc = test_dict['acc']

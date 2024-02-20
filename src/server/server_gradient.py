@@ -120,6 +120,7 @@ class ServerGradient(Server):
             stats = []
             for i, c in enumerate(selected_clients, start = 1):
                 # Communicate the latest global model
+
                 c.set_local_model_params(self.latest_model)
 
                 # Solve local gradient
@@ -136,7 +137,15 @@ class ServerGradient(Server):
                 solns.append(soln)
                 stats.append(stat)
 
+            # for client in range(len(stats)):
+            #     print('client is {}'.format(client))
+            #     stats[client]['bytes_w'] = stats[client]['bytes_w'] * (self.clients_per_round - 1)
+            #     stats[client]['bytes_r'] = stats[client]['bytes_r'] * (self.clients_per_round - 1)
+            #     print('client[bytes_w]= {}'.format(stats[client]['bytes_w']))
+
             self.metrics.extend_commu_stats(round_i, stats)
+
+            # print(solns)
 
             self.aggregate(solns, round_i)
             self.latest_model = self.get_flat_model_params()
@@ -166,6 +175,8 @@ class ServerGradient(Server):
             num = 0
             for local_soln in chosen_solns:
                 num += 1
+                if self.algo == 'dgc':
+                    local_soln = local_soln.to(self.device)
                 averaged_grad += local_soln
             averaged_grad /= num
         else:

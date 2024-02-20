@@ -54,8 +54,9 @@ class ServerLBGM(object):
         tmp_latest_model = self.clients[0].get_flat_model_params().detach()
         self.latest_model = tmp_latest_model
         if self.gpu:
-            self.latest_model = self.latest_model.cuda()
-        
+            # self.latest_model = self.latest_model.cuda()
+            self.latest_model = self.latest_model.to(self.device)
+
         for round_i in range(self.num_round):
             print('>>> Round {}, latest model.norm = {}'.format(round_i, self.latest_model.norm()))
 
@@ -92,6 +93,7 @@ class ServerLBGM(object):
 
             latest_grad = self.aggregate_grad(solns)
             self.latest_model -= self.lr * latest_grad
+            # self.latest_model = self.aggregate(solns, seed = round_i, stats = stats)
 
         # Test final model on train data
         self.test_latest_model_on_train_data(self.num_round)
@@ -113,6 +115,7 @@ class ServerLBGM(object):
             num = 0
             for num_sample, local_grad in zip(num_samples, chosen_solns):
                 num += 1
+                local_grad = local_grad.to(self.device)
                 averaged_solution += local_grad
             averaged_solution /= num
         else:
@@ -174,6 +177,7 @@ class ServerLBGM(object):
         netlosses = []
 
         for c in self.clients:
+            # self.latest_model = self.latest_model.to(c.device)
             c.set_local_model_params(self.latest_model)
 
             test_dict = c.local_test(use_eval_data = use_eval_data)
