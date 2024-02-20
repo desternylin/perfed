@@ -6,6 +6,7 @@ import numpy as np
 from src.model.model import choose_model
 from src.client.clientbase import Client
 import math
+from src.optimizer.fedoptimizer import grad_desc
 
 class QSGDClient(Client):
     def __init__(self, cid, train_data, valid_data, test_data, options):
@@ -21,6 +22,8 @@ class QSGDClient(Client):
 
         self.model = choose_model(options)
         self.move_model_to_gpu(self.model, options)
+        self.optimizer = grad_desc(self.model.parameters(), lr = options['person_lr'])
+
 
         self.local_model = self.get_flat_model_params()
         self.local_model_bytes = self.local_model.numel()
@@ -71,9 +74,12 @@ class QSGDClient(Client):
 
     def local_train(self):
         bytes_w = (self.local_model_bytes + math.ceil(self.local_model_bytes / self.bucket_size) * 32 + math.ceil(math.log(self.num_q_level, 2)) * self.local_model_bytes) / 32
+        # print('bytes_w = {}'.format(bytes_w))
         bytes_r = bytes_w
 
         begin_time = time.time()
+
+        self.model.cuda()
 
         self.model.train()
         train_loss = train_netloss = train_acc = train_total = 0.0
@@ -116,6 +122,28 @@ class QSGDClient(Client):
             'time': round(end_time - begin_time, 2)}
         stats.update(return_dict)
         return (len(self.train_data), tilde_grads), stats
+    
+    def train_one_step(self):
+        self.model.train()
+        # Step 1
+        x, y = self.get_next_train_batch()
+        if self.gpu:
+            x, y = x.cuda(), y.cuda()
+        self.optimizer.zero_grad()
+        pred = self.model(x)
+        loss = self.criterion(pred, y)
+        loss.backward()
+        self.optimizer.step()
+        # Step 2
+        x, y = self.get_next_train_batch()
+        if self.gpu:
+            x, y = x.cuda(), y.cuda()
+        self.optimizer.zero_grad()
+        pred = self.model(x)
+        loss = self.criterion(pred, y)
+        loss.backward()
+        self.optimizer.step(beta = 0.001)
+
 
     def local_test(self, use_eval_data = 2):
         if use_eval_data == 2:
@@ -124,6 +152,8 @@ class QSGDClient(Client):
             dataloader, dataset = self.valid_dataloader, self.valid_data
         else:
             dataloader, dataset = self.train_dataloader, self.train_data
+
+        self.train_one_step()
         
         self.model.eval()
         test_loss = test_netloss = test_acc = test_total = 0.0
@@ -145,6 +175,8 @@ class QSGDClient(Client):
         test_loss = test_netloss
         test_dict = {'loss': test_loss, 'netloss': test_netloss,
             'acc': test_acc, 'test_num': test_total}
+        
+        self.set_flat_params_to(self.local_model)
 
         return test_dict
 

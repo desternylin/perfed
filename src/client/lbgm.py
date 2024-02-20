@@ -19,14 +19,20 @@ class LBGMClient(Client):
         self.iter_trainloader = iter(self.train_dataloader)
         self.iter_testloader = iter(self.test_dataloader)
         self.gpu = options['gpu'] if 'gpu' in options else False
-        self.device = 0 if 'device' not in options else options['device']
+        # self.device = 0 if 'device' not in options else options['device']
+        total_device = torch.cuda.device_count()
+        if self.gpu:
+            self.device = 0 if 'device' not in options else ((options['device'] + self.cid % total_device) % total_device)
+        else:
+            self.device = 'cpu'
 
         self.model = choose_model(options)
         self.optimizer = grad_desc(self.model.parameters(), lr = options['local_lr'])
         self.move_model_to_gpu(self.model, options)
         self.LBG = self.get_flat_model_grads()
         if self.gpu:
-            self.LBG = self.LBG.cuda()
+            # self.LBG = self.LBG.cuda()
+            self.LBG = self.LBG.to(self.device)
 
         self.delta_thre = options['delta_thre']
 
@@ -71,6 +77,7 @@ class LBGMClient(Client):
             return 1 - coef.item()
 
     def local_train(self):
+        # bytes_w = self.local_model_bytes
         bytes_r = self.local_model_bytes
 
         begin_time = time.time()
@@ -80,13 +87,15 @@ class LBGMClient(Client):
         self.optimizer.zero_grad()
         grad_accum = self.get_flat_model_grads()
         if self.gpu:
-            grad_accum = grad_accum.cuda()
+            # grad_accum = grad_accum.cuda()
+            grad_accum = grad_accum.to(self.device)
         for local_round in range(self.num_local_round):
             train_loss = train_netloss = train_acc = train_total = 0.0
 
             x, y = self.get_next_train_batch()
             if self.gpu:
-                x, y = x.cuda(), y.cuda()
+                # x, y = x.cuda(), y.cuda()
+                x, y = x.to(self.device), y.to(self.device)
             self.optimizer.zero_grad()
             pred = self.model(x)
             if torch.isnan(pred.max()):
@@ -99,7 +108,9 @@ class LBGMClient(Client):
 
             grad = self.get_flat_model_grads()
             if self.gpu:
-                grad = grad.cuda()
+                # grad = grad.cuda()
+                grad = grad.to(self.device)
+                # grad_accum = grad_accum.to(self.device)
             grad_accum += grad
 
             _, predicted = torch.max(pred, 1)
@@ -118,6 +129,7 @@ class LBGMClient(Client):
         return_dict.update(param_dict)
 
         end_time = time.time()
+        # print(grad_accum.size())
         LBP_err = self.compute_LBP_error(grad_accum)
         if LBP_err <= self.delta_thre:
             mu_k = (torch.dot(grad_accum, self.LBG) / torch.norm(self.LBG)).item() * self.LBG
@@ -131,6 +143,29 @@ class LBGMClient(Client):
             'time': round(end_time - begin_time, 2)}
         stats.update(return_dict)
         return (len(self.train_data), mu_k), stats
+    
+    def train_one_step(self):
+        self.model.train()
+        # Step 1
+        x, y = self.get_next_train_batch()
+        if self.gpu:
+            # x, y = x.cuda(), y.cuda()
+            x, y = x.to(self.device), y.to(self.device)
+        self.optimizer.zero_grad()
+        pred = self.model(x)
+        loss = self.criterion(pred, y)
+        loss.backward()
+        self.optimizer.step()
+        # Step 2
+        x, y = self.get_next_train_batch()
+        if self.gpu:
+            # x, y = x.cuda(), y.cuda()
+            x, y = x.to(self.device), y.to(self.device)
+        self.optimizer.zero_grad()
+        pred = self.model(x)
+        loss = self.criterion(pred, y)
+        loss.backward()
+        self.optimizer.step(beta = 0.001)
 
     def local_test(self, use_eval_data = 2):
         if use_eval_data == 2:
@@ -140,12 +175,15 @@ class LBGMClient(Client):
         else:
             dataloader, dataset = self.train_dataloader, self.train_data
 
+        self.train_one_step()
+
         self.model.eval()
         test_loss = test_netloss = test_acc = test_total = 0.0
         with torch.no_grad():
             for x, y in dataloader:
                 if self.gpu:
-                    x, y = x.cuda(), y.cuda()
+                    # x, y = x.cuda(), y.cuda()
+                    x, y = x.to(self.device), y.to(self.device)
                 
                 pred = self.model(x)
                 loss = self.criterion(pred, y)
@@ -160,6 +198,8 @@ class LBGMClient(Client):
         test_loss = test_netloss
         test_dict = {'loss': test_loss, 'netloss': test_netloss,
             'acc': test_acc, 'test_num': test_total}
+        
+        self.set_flat_params_to(self.local_model)
 
         return test_dict
             

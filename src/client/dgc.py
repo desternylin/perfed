@@ -5,6 +5,7 @@ from src.model.model import choose_model
 from torch.utils.data import DataLoader
 import torch.nn as nn
 from src.client.clientbase import Client
+from src.optimizer.fedoptimizer import grad_desc
 
 class DGCClient(Client):
     def __init__(self, cid, train_data, valid_data, test_data, options):
@@ -19,6 +20,7 @@ class DGCClient(Client):
         self.iter_testloader = iter(self.test_dataloader)
 
         self.model = choose_model(options)
+        self.optimizer = grad_desc(self.model.parameters(), lr = options['person_lr'])
         self.move_model_to_gpu(self.model, options)
 
         self.local_model = self.get_flat_model_params()
@@ -32,6 +34,11 @@ class DGCClient(Client):
         elif options['criterion'] == 'mseloss':
             self.criterion = nn.MSELoss()
         self.gpu = options['gpu'] if 'gpu' in options else False
+        total_device = torch.cuda.device_count()
+        if self.gpu:
+            self.device = 0 if 'device' not in options else ((options['device'] + self.cid % total_device) % total_device)
+        else:
+            self.device = 'cpu'
 
         self.uk = torch.zeros_like(self.local_model)
         self.vk = torch.zeros_like(self.local_model)
@@ -56,7 +63,8 @@ class DGCClient(Client):
             else:
                 mask = torch.zeros(flat_size, dtype = torch.bool)
                 if self.gpu:
-                    mask = mask.cuda()
+                    # mask = mask.cuda()
+                    mask = mask.to(self.device)
             tilde_grads[prev_ind:prev_ind + flat_size] = tmp_vk * mask
             self.vk[prev_ind:prev_ind + flat_size] *= ~mask
             self.uk[prev_ind:prev_ind + flat_size] *= ~mask
@@ -78,7 +86,8 @@ class DGCClient(Client):
 
         x, y = self.get_next_train_batch()
         if self.gpu:
-            x, y = x.cuda(), y.cuda()
+            x, y = x.to(self.device), y.to(self.device)
+            # x, y = x.cuda(), y.cuda()
         pred = self.model(x)
         if torch.isnan(pred.max()):
             from IPython import embed
@@ -112,7 +121,28 @@ class DGCClient(Client):
         stats = {'id': self.cid, 'bytes_w': bytes_w, 'bytes_r': bytes_r,
             'time': round(end_time - begin_time, 2)}
         stats.update(return_dict)
-        return (len(self.train_data), tilde_grads), stats
+        return [len(self.train_data), tilde_grads], stats
+    
+    def train_one_step(self):
+        self.model.train()
+        # Step 1
+        x, y = self.get_next_train_batch()
+        if self.gpu:
+            x, y = x.cuda(), y.cuda()
+        self.optimizer.zero_grad()
+        pred = self.model(x)
+        loss = self.criterion(pred, y)
+        loss.backward()
+        self.optimizer.step()
+        # Step 2
+        x, y = self.get_next_train_batch()
+        if self.gpu:
+            x, y = x.cuda(), y.cuda()
+        self.optimizer.zero_grad()
+        pred = self.model(x)
+        loss = self.criterion(pred, y)
+        loss.backward()
+        self.optimizer.step(beta = 0.001)
     
     def local_test(self, use_eval_data = 2):
         if use_eval_data == 2:
@@ -122,6 +152,8 @@ class DGCClient(Client):
         else:
             dataloader, dataset = self.train_dataloader, self.train_data
         
+        self.train_one_step()
+
         self.model.eval()
         test_loss = test_netloss = test_acc = test_total = 0.0
         with torch.no_grad():
@@ -142,5 +174,7 @@ class DGCClient(Client):
         test_loss = test_netloss
         test_dict = {'loss': test_loss, 'netloss': test_netloss,
             'acc': test_acc, 'test_num': test_total}
+        
+        self.set_flat_params_to(self.local_model)
 
         return test_dict
